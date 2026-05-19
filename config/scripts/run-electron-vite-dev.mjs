@@ -136,7 +136,7 @@ function prepareMacDevElectronApp() {
 
   const title = process.env.ORCA_DEV_DOCK_TITLE || 'Orca: dev'
   const identityKey = process.env.ORCA_DEV_INSTANCE_KEY || repoRoot
-  const bundleLayoutVersion = 'dock-title-app-filename-v2'
+  const bundleLayoutVersion = 'dock-title-app-filename-verbatim-symlinks-v2'
   const hash = createHash('sha1')
     .update(
       `${sourceAppPath}\0${electronVersion ?? ''}\0${title}\0${identityKey}\0${bundleLayoutVersion}`
@@ -167,16 +167,20 @@ function prepareMacDevElectronApp() {
 
   rmSync(distDir, { recursive: true, force: true })
   mkdirSync(distDir, { recursive: true })
-  cpSync(sourceAppPath, appPath, { recursive: true })
+  // Why verbatimSymlinks: Electron Framework relies on internal relative
+  // symlinks (Versions/Current → A, Resources → Versions/Current/Resources).
+  // Without this, cpSync rewrites them to absolute paths back into
+  // node_modules; helpers in the dev-copy then resolve framework lookups
+  // outside their own bundle and macOS 26's hardened-runtime sandbox refuses
+  // the cross-bundle traversal, surfacing as "icudtl.dat not found in bundle"
+  // and renderer/GPU/network helper crashes at boot.
+  cpSync(sourceAppPath, appPath, { recursive: true, verbatimSymlinks: true })
 
   const plistPath = path.join(appPath, 'Contents', 'Info.plist')
   setPlistValue(plistPath, 'CFBundleName', title)
   setPlistValue(plistPath, 'CFBundleDisplayName', title)
   setPlistValue(plistPath, 'CFBundleIdentifier', bundleId)
 
-  // Why no re-sign: dev launches execute the copied Electron binary directly,
-  // and Electron's framework bundle is ambiguous to codesign when deep-signing
-  // an already-built distribution. Avoid blocking `pn dev` on local signing.
   writeFileSync(markerPath, expectedMarker, 'utf8')
   process.env.ELECTRON_EXEC_PATH = path.join(appPath, 'Contents', 'MacOS', 'Electron')
 }
