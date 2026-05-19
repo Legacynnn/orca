@@ -4,6 +4,7 @@ import type { TabGroupLayoutNode } from '../../../../shared/types'
 import { useAppStore } from '../../store'
 import TabGroupPanel from './TabGroupPanel'
 import TabDragPreview from '../tab-bar/TabDragPreview'
+import WorkspaceCanvasHeader from '../workspace-canvas-header/WorkspaceCanvasHeader'
 import { type HoveredTabInsertion, type TabDropZone, useTabDragSplit } from './useTabDragSplit'
 
 const MIN_RATIO = 0.15
@@ -234,10 +235,14 @@ export default function TabGroupSplitLayout({
           `touchesLeftEdge`, so the seam is always exactly 1px — previously
           both painted and stacked into a 2px bar below the drag strip. */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-l border-border">
-        <div
-          className="h-[4px] shrink-0 bg-card"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        />
+        {/* Why: the primary canvas header sits above the tab-group split tree
+            so it spans the full canvas regardless of how panes are arranged.
+            It owns the window-drag region for the top band itself (no separate
+            4px strip above it) so its content vertically centers at y=18 —
+            the same pixel the floating sidebar toggle uses inside
+            `titlebar-left`. Per-group tab strips below keep their own 32px
+            row. */}
+        <WorkspaceCanvasHeader />
         <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
           <SplitNode
             node={layout}
@@ -246,7 +251,13 @@ export default function TabGroupSplitLayout({
             focusedGroupId={focusedGroupId}
             isWorktreeActive={isWorktreeActive}
             hasSplitGroups={hasSplits}
-            touchesTopEdge={true}
+            // Why: `touchesTopEdge` drives the per-group reservations for the
+            // floating sidebar toggle (left) and the right-sidebar toggle in
+            // TabGroupPanel. WorkspaceCanvasHeader sits above this split tree
+            // and already provides those reservations — passing `false` here
+            // lets the first tab strip reclaim the canvas's left and right
+            // edges instead of leaving blank gaps beneath the header.
+            touchesTopEdge={false}
             touchesRightEdge={true}
             touchesLeftEdge={true}
             isTabDragActive={dragSplit.activeDrag !== null}

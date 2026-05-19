@@ -14,6 +14,10 @@ vi.mock('./TabGroupPanel', () => ({
   default: (props: unknown) => ({ __mock: 'TabGroupPanel', props })
 }))
 
+vi.mock('../workspace-canvas-header/WorkspaceCanvasHeader', () => ({
+  default: () => null
+}))
+
 vi.mock('./useTabDragSplit', () => ({
   useTabDragSplit: () => ({
     activeDrag: null,
@@ -40,8 +44,8 @@ describe('TabGroupSplitLayout', () => {
     })
 
     // DndContext has multiple children (layout wrapper + DragOverlay). The
-    // layout wrapper holds [drag-strip, split-body]; the split-body holds the
-    // SplitNode element.
+    // layout wrapper holds [workspace-canvas-header, split-body]; the
+    // split-body holds the SplitNode element.
     const layoutWrapper = element.props.children[0]
     const splitBody = layoutWrapper.props.children[1]
     const splitNodeElement = splitBody.props.children
@@ -63,8 +67,11 @@ describe('TabGroupSplitLayout', () => {
         worktreeId: 'wt-1',
         isFocused: false,
         hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
+        // Why: WorkspaceCanvasHeader sits above the split tree and owns the
+        // reservations for the floating sidebar / explorer toggles, so the
+        // first tab strip no longer needs to set these flags.
+        reserveClosedExplorerToggleSpace: false,
+        reserveCollapsedSidebarHeaderSpace: false
       })
     )
   })
@@ -76,13 +83,13 @@ describe('TabGroupSplitLayout', () => {
         worktreeId: 'wt-1',
         isFocused: true,
         hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
+        reserveClosedExplorerToggleSpace: false,
+        reserveCollapsedSidebarHeaderSpace: false
       })
     )
   })
 
-  it('only reserves top-right header space for the floating explorer toggle', () => {
+  it('does not reserve top-edge toggle space — the canvas header owns that band', () => {
     const element = TabGroupSplitLayout({
       layout: {
         type: 'split',
@@ -114,12 +121,12 @@ describe('TabGroupSplitLayout', () => {
     expect(leftPanelProps).toEqual(
       expect.objectContaining({
         reserveClosedExplorerToggleSpace: false,
-        reserveCollapsedSidebarHeaderSpace: true
+        reserveCollapsedSidebarHeaderSpace: false
       })
     )
     expect(rightPanelProps).toEqual(
       expect.objectContaining({
-        reserveClosedExplorerToggleSpace: true,
+        reserveClosedExplorerToggleSpace: false,
         reserveCollapsedSidebarHeaderSpace: false
       })
     )
