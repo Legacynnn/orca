@@ -283,6 +283,27 @@ function getFilename(filePath: string): string {
   return lastSlash >= 0 ? filePath.slice(lastSlash + 1) : filePath
 }
 
+const TEST_PATTERNS: RegExp[] = [
+  // JS/TS: foo.test.ts, foo.spec.tsx, etc.
+  /\.(test|spec)\.(?:js|jsx|ts|tsx|mjs|cjs|mts|cts)$/i,
+  // Go: handler_test.go
+  /_test\.go$/i,
+  // Rust: foo_test.rs
+  /_test\.rs$/i,
+  // Python: test_foo.py or foo_test.py
+  /(?:^|\/|\\)test_[^/\\]+\.py$/i,
+  /_test\.py$/i,
+  // Ruby: foo_test.rb or foo_spec.rb
+  /_(?:test|spec)\.rb$/i,
+  // Java: HandlerTest.java / HandlerTests.java / HandlerTestCase.java
+  /(?:Test|Tests|TestCase)\.java$/
+]
+
+export function isTestFile(filePath: string): boolean {
+  const filename = getFilename(filePath)
+  return TEST_PATTERNS.some((pattern) => pattern.test(filename))
+}
+
 function getExtension(filename: string): string {
   const lowerName = filename.toLowerCase()
   const compoundExtension = COMPOUND_EXTENSIONS.find((ext) => lowerName.endsWith(`.${ext}`))
