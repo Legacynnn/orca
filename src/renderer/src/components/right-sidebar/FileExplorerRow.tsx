@@ -30,7 +30,8 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { detectLanguage } from '@/lib/language-detect'
-import { getFileTypeIcon } from '@/lib/file-type-icons'
+import { getFileIconSpec } from '@/lib/file-type-icons'
+import { FileTypeIcon } from './FileTypeIcon'
 import { openFileInBrowserTab } from '@/lib/file-preview'
 import { WORKSPACE_FILE_PATH_MIME } from '@/lib/workspace-file-drag'
 import type { GitFileStatus } from '../../../../shared/types'
@@ -270,7 +271,7 @@ export function FileExplorerRow({
 }: FileExplorerRowProps): React.JSX.Element {
   const openMarkdownPreview = useAppStore((s) => s.openMarkdownPreview)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
-  const FileIcon = getFileTypeIcon(node.relativePath || node.name)
+  const fileIconSpec = getFileIconSpec(node.relativePath || node.name)
   const rowDropDir = node.isDirectory ? node.path : targetDir
   const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop } = useFileExplorerRowDrag({
     rowDropDir,
@@ -339,7 +340,7 @@ export function FileExplorerRow({
           ) : (
             <>
               <span className="size-3 shrink-0" />
-              <FileIcon className="size-3 shrink-0 text-muted-foreground" />
+              <FileTypeIcon spec={fileIconSpec} />
             </>
           )}
           <span
