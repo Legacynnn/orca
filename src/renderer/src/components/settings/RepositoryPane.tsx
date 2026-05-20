@@ -13,6 +13,7 @@ import { McpConfigSection } from './McpConfigSection'
 import { WorktreeSymlinksSection } from './WorktreeSymlinksSection'
 import { SparsePresetSettingsSection } from './SparsePresetSettingsSection'
 import { SearchableSetting } from './SearchableSetting'
+import { WorkspaceIconSetting } from './WorkspaceIconSetting'
 import { matchesSettingsSearch, type SettingsSearchEntry } from './settings-search'
 import { useAppStore } from '../../store'
 
@@ -37,6 +38,11 @@ export function getRepositoryPaneSearchEntries(repo: Repo): SettingsSearchEntry[
       title: 'Badge Color',
       description: 'Repo color used in the sidebar and tabs.',
       keywords: [repo.displayName, 'color', 'badge']
+    },
+    {
+      title: 'Workspace Icon',
+      description: 'Icon shown in the workspace header and sidebar for this repo.',
+      keywords: [repo.displayName, 'icon', 'logo', 'favicon', 'avatar', 'github', 'image', 'brand']
     },
     ...(isFolder
       ? []
@@ -193,7 +199,13 @@ export function RepositoryPane({
 
   const allEntries = getRepositoryPaneSearchEntries(repo)
   const identityEntries = allEntries.filter((entry) =>
-    ['Display Name', 'Badge Color', 'Default Worktree Base', 'Remove Repo'].includes(entry.title)
+    [
+      'Display Name',
+      'Badge Color',
+      'Workspace Icon',
+      'Default Worktree Base',
+      'Remove Repo'
+    ].includes(entry.title)
   )
   const sparsePresetEntries = allEntries.filter((entry) =>
     ['Sparse Checkout Presets'].includes(entry.title)
@@ -287,6 +299,8 @@ export function RepositoryPane({
             ))}
           </div>
         </SearchableSetting>
+
+        <WorkspaceIconSetting repo={repo} updateRepo={updateRepo} />
 
         {!isFolder ? (
           <SearchableSetting

@@ -81,6 +81,7 @@ import {
   updateWorktreeSelection
 } from './worktree-multi-selection'
 import { branchDisplayName } from './WorktreeCardHelpers'
+import { WorkspaceIcon } from '../workspace-icon/WorkspaceIcon'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import { getRepoHeaderCreateState } from './repo-header-create-state'
 
@@ -1082,7 +1083,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     }
                   }}
                 >
-                  {row.icon ? (
+                  {row.icon || row.repo ? (
                     <div
                       onPointerDown={
                         canReorderRepoHeaders && isRepoHeader && repoIdForHeader
@@ -1094,7 +1095,16 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                         row.repo ? 'text-muted-foreground' : row.tone
                       )}
                     >
-                      <row.icon className={row.repo ? 'size-3.5' : 'size-3'} />
+                      {row.repo ? (
+                        // Why: per-repo workspace icon (auto-detected logo,
+                        // manual pick, or GitHub owner avatar). WorkspaceIcon
+                        // already falls back to the Folder glyph when nothing
+                        // resolves, so REPO_GROUP_META.icon stays a sane
+                        // default for the no-icon case.
+                        <WorkspaceIcon repoId={row.repo.id} sizePx={14} />
+                      ) : row.icon ? (
+                        <row.icon className="size-3" />
+                      ) : null}
                     </div>
                   ) : null}
 

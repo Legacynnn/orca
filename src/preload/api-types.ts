@@ -569,6 +569,9 @@ export type PreloadApi = {
           | 'worktreeBaseRef'
           | 'kind'
           | 'issueSourcePreference'
+          | 'iconSource'
+          | 'iconPath'
+          | 'iconUrl'
         >
       >
     }) => Promise<Repo>
@@ -599,6 +602,10 @@ export type PreloadApi = {
       limit?: number
     }) => Promise<BaseRefSearchResult[]>
     onChanged: (callback: () => void) => () => void
+    detectIcon: (args: { repoId: string }) => Promise<{ relativePath: string } | null>
+    resolveIcon: (args: { repoId: string }) => Promise<string | null>
+    pickIconFile: (args?: { repoId?: string }) => Promise<string | null>
+    resolveGithubOwnerAvatar: (args: { repoId: string }) => Promise<string | null>
   }
   sparsePresets: {
     list: (args: { repoId: string }) => Promise<SparsePreset[]>

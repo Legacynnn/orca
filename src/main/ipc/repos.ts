@@ -15,7 +15,15 @@ import { isFolderRepo } from '../../shared/repo-kind'
 import { DEFAULT_REPO_BADGE_COLOR } from '../../shared/constants'
 import { invalidateAuthorizedRootsCache } from './filesystem-auth'
 import type { ChildProcess } from 'child_process'
-import { access, mkdir, readdir, rm } from 'fs/promises'
+import { access, mkdir, readdir, readFile, rm } from 'fs/promises'
+import {
+  detectWorkspaceIcon,
+  iconMimeType,
+  resolveIconAbsolutePath,
+  MAX_ICON_BYTES,
+  SUPPORTED_ICON_EXTENSIONS
+} from '../repo-icon/detect'
+import { getRepoSlug } from '../github/client'
 import { gitExecFileAsync, gitSpawn } from '../git/runner'
 import { basename, isAbsolute, join } from 'path'
 import {
@@ -86,6 +94,10 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
   ipcMain.removeHandler('sparsePresets:list')
   ipcMain.removeHandler('sparsePresets:save')
   ipcMain.removeHandler('sparsePresets:remove')
+  ipcMain.removeHandler('repos:detectIcon')
+  ipcMain.removeHandler('repos:resolveIcon')
+  ipcMain.removeHandler('repos:pickIconFile')
+  ipcMain.removeHandler('repos:resolveGithubOwnerAvatar')
 
   ipcMain.handle('repos:list', () => {
     return store.getRepos()
@@ -121,6 +133,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       store.addRepo(repo)
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
+      scheduleIconAutoDetect(mainWindow, store, repo)
       emitRepoAdded('folder_picker', false)
       return { repo }
     }
@@ -419,6 +432,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       store.addRepo(repo)
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
+      scheduleIconAutoDetect(mainWindow, store, repo)
       emitRepoAdded('folder_picker', false)
       return { repo }
     }
@@ -462,6 +476,9 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
             | 'kind'
             | 'symlinkPaths'
             | 'issueSourcePreference'
+            | 'iconSource'
+            | 'iconPath'
+            | 'iconUrl'
           >
         >
       }
@@ -492,6 +509,30 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
         const v = updates.symlinkPaths as unknown
         if (!Array.isArray(v) || !v.every((e) => typeof e === 'string')) {
           delete updates.symlinkPaths
+        }
+      }
+      // Why: iconSource is a narrow union; an out-of-band value would persist
+      // garbage that the renderer can't switch on. Strip the field rather than
+      // throwing so other valid fields in the same call still land — same
+      // pattern as issueSourcePreference above.
+      if (
+        'iconSource' in updates &&
+        updates.iconSource !== undefined &&
+        updates.iconSource !== 'auto' &&
+        updates.iconSource !== 'manual' &&
+        updates.iconSource !== 'github-owner' &&
+        updates.iconSource !== 'none'
+      ) {
+        delete updates.iconSource
+      }
+      if ('iconPath' in updates && updates.iconPath !== undefined) {
+        if (typeof updates.iconPath !== 'string') {
+          delete updates.iconPath
+        }
+      }
+      if ('iconUrl' in updates && updates.iconUrl !== undefined) {
+        if (typeof updates.iconUrl !== 'string') {
+          delete updates.iconUrl
         }
       }
       const updated = store.updateRepo(args.repoId, updates)
@@ -700,6 +741,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       store.addRepo(repo)
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
+      scheduleIconAutoDetect(mainWindow, store, repo)
       emitRepoAdded('clone_url', false)
       return repo
     }
@@ -817,6 +859,136 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       return searchBaseRefDetailsForRepo(store, args)
     }
   )
+
+  // ── Workspace icons ─────────────────────────────────────────────
+  // Why: workspace icons have three orthogonal sources — auto-detect from
+  // disk, manual file pick, GitHub owner avatar. Each needs its own handler
+  // since they have different inputs (repo only / file path / GitHub slug)
+  // and different security characteristics (filesystem read vs. network
+  // fetch). Keeping them separate is clearer than one polymorphic handler.
+
+  ipcMain.handle(
+    'repos:detectIcon',
+    async (_event, args: { repoId: string }): Promise<{ relativePath: string } | null> => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) {
+        return null
+      }
+      // Why: SSH repos live behind a relay — scanning candidate paths over
+      // SSH would mean N round-trips per detect call, and most projects ship
+      // their logo near a stable few paths. Skip auto-detection on remote
+      // repos; the renderer falls back to the manual or github-owner source.
+      if (repo.connectionId) {
+        return null
+      }
+      return detectWorkspaceIcon(repo.path)
+    }
+  )
+
+  ipcMain.handle(
+    'repos:resolveIcon',
+    async (_event, args: { repoId: string }): Promise<string | null> => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) {
+        return null
+      }
+      const source = repo.iconSource ?? 'auto'
+      if (source === 'none') {
+        return null
+      }
+      if (source === 'github-owner') {
+        // Why: the URL is stored at the time the user selects this source,
+        // so resolveIcon stays cheap (no GitHub round-trip per render).
+        return repo.iconUrl ?? null
+      }
+      // Why: SSH repos can't surface a data URL from a local file read —
+      // there is no local file. A future iteration could stream over the
+      // relay; for now we refuse rather than silently failing.
+      if (repo.connectionId) {
+        return null
+      }
+      const iconPath = repo.iconPath
+      if (!iconPath) {
+        return null
+      }
+      const absolute = resolveIconAbsolutePath(repo.path, iconPath)
+      const mime = iconMimeType(absolute)
+      if (!mime) {
+        return null
+      }
+      try {
+        const buffer = await readFile(absolute)
+        // Why: oversize protection again at the read site — `iconPath` could
+        // have been set by a manual picker that bypassed the auto-detector's
+        // size guard, or the file could have grown since detection.
+        if (buffer.byteLength > MAX_ICON_BYTES) {
+          return null
+        }
+        return `data:${mime};base64,${buffer.toString('base64')}`
+      } catch {
+        return null
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'repos:pickIconFile',
+    async (_event, args?: { repoId?: string }): Promise<string | null> => {
+      // Why: default the dialog to the repo's own folder so users land in
+      // their project files instead of wherever Electron last opened a
+      // dialog (typically ~/Documents or the previously-picked location).
+      // Skip the default for SSH repos because `repo.path` points at a
+      // remote host that doesn't exist on the local filesystem.
+      const repo = args?.repoId ? store.getRepo(args.repoId) : undefined
+      const defaultPath = repo && !repo.connectionId ? repo.path : undefined
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile'],
+        ...(defaultPath ? { defaultPath } : {}),
+        filters: [
+          // Why: the picker's extension filter mirrors the renderer's accepted
+          // MIME map (see iconMimeType) so a user can't pick a file the
+          // resolver will refuse to inline.
+          {
+            name: 'Images',
+            extensions: SUPPORTED_ICON_EXTENSIONS.map((ext) => ext.replace(/^\./, ''))
+          }
+        ]
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return null
+      }
+      return result.filePaths[0] ?? null
+    }
+  )
+
+  // Why: legacy repos persisted before this feature have iconSource undefined.
+  // Kick off a one-time scan for each so users don't need to open settings to
+  // see auto-detected logos. The guard inside scheduleIconAutoDetect makes
+  // this a no-op for repos that have already been scanned, so this runs once
+  // per legacy repo and is bounded by repo count.
+  for (const repo of store.getRepos()) {
+    scheduleIconAutoDetect(mainWindow, store, repo)
+  }
+
+  ipcMain.handle(
+    'repos:resolveGithubOwnerAvatar',
+    async (_event, args: { repoId: string }): Promise<string | null> => {
+      const repo = store.getRepo(args.repoId)
+      if (!repo) {
+        return null
+      }
+      const slug = await getRepoSlug(repo.path, repo.connectionId).catch(() => null)
+      if (!slug) {
+        return null
+      }
+      // Why: GitHub's `https://github.com/<owner>.png` redirects to the
+      // owner's current avatar without an API call or auth, and survives
+      // username changes through GitHub's redirect. Returning the URL lets
+      // the renderer load it directly via <img src>, so we avoid proxying
+      // the bytes through main.
+      return `https://github.com/${slug.owner}.png?size=120`
+    }
+  )
 }
 
 async function searchBaseRefDetailsForRepo(
@@ -874,6 +1046,49 @@ function notifyReposChanged(mainWindow: BrowserWindow): void {
   if (!mainWindow.isDestroyed()) {
     mainWindow.webContents.send('repos:changed')
   }
+}
+
+// Why: run icon detection asynchronously after a repo lands in the store and
+// emit a second repos:changed when it finishes. The repo add flow shouldn't
+// block on a filesystem scan that takes ~ms per candidate path, and a
+// detection miss should not delay the sidebar showing the new entry. SSH
+// repos are skipped at the detector boundary; local "folder" repos still get
+// scanned because non-git asset folders can be brand-marked too.
+//
+// Why mark `iconSource: 'auto'` even on a miss: `iconSource === undefined`
+// is the sentinel meaning "never scanned" — we use it to skip already-scanned
+// repos on startup. If we left it undefined after a miss, every app launch
+// would re-scan repos that don't have an icon.
+function scheduleIconAutoDetect(mainWindow: BrowserWindow, store: Store, repo: Repo): void {
+  if (repo.connectionId) {
+    return
+  }
+  // Skip when the repo has any explicit user choice or already-recorded scan
+  // result. The settings UI uses an explicit "Re-detect" button when the
+  // user wants to re-run.
+  if (repo.iconSource !== undefined || repo.iconPath !== undefined) {
+    return
+  }
+  void (async () => {
+    try {
+      const detected = await detectWorkspaceIcon(repo.path)
+      const fresh = store.getRepo(repo.id)
+      // Why: re-check post-detection — the user could have switched source
+      // in the brief window between scheduling and resolution.
+      if (!fresh || fresh.iconSource !== undefined || fresh.iconPath !== undefined) {
+        return
+      }
+      const updated = store.updateRepo(repo.id, {
+        iconSource: 'auto',
+        ...(detected ? { iconPath: detected.relativePath } : {})
+      })
+      if (updated) {
+        notifyReposChanged(mainWindow)
+      }
+    } catch {
+      // Detection is best-effort. Silently fall back to the folder glyph.
+    }
+  })()
 }
 
 function notifySparsePresetsChanged(mainWindow: BrowserWindow, repoId: string): void {

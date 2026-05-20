@@ -23,6 +23,9 @@ type RepoUpdate = Partial<
     | 'kind'
     | 'symlinkPaths'
     | 'issueSourcePreference'
+    | 'iconSource'
+    | 'iconPath'
+    | 'iconUrl'
   >
 >
 

@@ -90,6 +90,21 @@ export type Repo = {
    *  "what to link", the global flag is the "whether to link at all" switch.
    *  Undefined/empty means no symlinks are created for this repo. */
   symlinkPaths?: string[]
+  /** Per-repo workspace icon source. `undefined` is treated identically to
+   *  `'auto'` so existing persisted repos pick up auto-detection without a
+   *  migration write. `'manual'` uses `iconPath` verbatim. `'github-owner'`
+   *  uses `iconUrl` (the cached avatar URL). `'none'` forces the default
+   *  Folder glyph even when an icon could be resolved — lets the user opt out
+   *  of an auto-detected logo they don't like. */
+  iconSource?: 'auto' | 'manual' | 'github-owner' | 'none'
+  /** Absolute or repo-relative path to a workspace icon file. Set by the
+   *  auto-detector or the manual file picker. Held even when `iconSource` is
+   *  `'github-owner'`/`'none'` so the previous selection survives a source
+   *  switch and back. */
+  iconPath?: string
+  /** Cached GitHub owner avatar URL when `iconSource` is `'github-owner'`.
+   *  Persisted so the renderer doesn't re-hit the GitHub API on every load. */
+  iconUrl?: string
 }
 
 export type SetupRunPolicy = 'ask' | 'run-by-default' | 'skip-by-default'

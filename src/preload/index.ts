@@ -430,7 +430,19 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('repos:changed', listener)
       return () => ipcRenderer.removeListener('repos:changed', listener)
-    }
+    },
+
+    detectIcon: (args: { repoId: string }): Promise<{ relativePath: string } | null> =>
+      ipcRenderer.invoke('repos:detectIcon', args),
+
+    resolveIcon: (args: { repoId: string }): Promise<string | null> =>
+      ipcRenderer.invoke('repos:resolveIcon', args),
+
+    pickIconFile: (args?: { repoId?: string }): Promise<string | null> =>
+      ipcRenderer.invoke('repos:pickIconFile', args),
+
+    resolveGithubOwnerAvatar: (args: { repoId: string }): Promise<string | null> =>
+      ipcRenderer.invoke('repos:resolveGithubOwnerAvatar', args)
   },
 
   sparsePresets: {

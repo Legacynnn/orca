@@ -26,6 +26,7 @@ import { getRepoKindLabel, isFolderRepo } from '../../../../shared/repo-kind'
 import type { HostedReviewInfo } from '../../../../shared/hosted-review'
 import type { Worktree, Repo, IssueInfo, LinearIssue } from '../../../../shared/types'
 import { branchDisplayName, CONFLICT_OPERATION_LABELS, FilledBellIcon } from './WorktreeCardHelpers'
+import { WorkspaceIcon, useWorkspaceIconSrc } from '../workspace-icon/WorkspaceIcon'
 import {
   WorktreeCardDetailsHover,
   WorktreeCardMetaBadges,
@@ -61,6 +62,34 @@ function formatSparseDirectoryPreview(directories: string[]): string {
 
 function isWebClient(): boolean {
   return Boolean((window as unknown as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__)
+}
+
+// Why: the sidebar badge has two visual modes — the colored dot when no
+// per-repo icon is set, and a small square icon when one is. Both share the
+// same chrome (rounded pill, accent background, lowercase repo name) so they
+// stay visually unified as the user opts in/out of icons.
+function WorktreeRepoBadge({
+  repoId,
+  displayName,
+  badgeColor
+}: {
+  repoId: string
+  displayName: string
+  badgeColor: string
+}): React.JSX.Element {
+  const iconSrc = useWorkspaceIconSrc(repoId)
+  return (
+    <div className="flex items-center gap-1.5 shrink-0 px-1.5 py-0.5 rounded-[4px] bg-accent border border-border dark:bg-accent/50 dark:border-border/60">
+      {iconSrc ? (
+        <WorkspaceIcon repoId={repoId} sizePx={12} />
+      ) : (
+        <div className="size-1.5 rounded-full" style={{ backgroundColor: badgeColor }} />
+      )}
+      <span className="text-[10px] font-semibold text-foreground truncate max-w-[6rem] leading-none lowercase">
+        {displayName}
+      </span>
+    </div>
+  )
 }
 
 const WorktreeCard = React.memo(function WorktreeCard({
@@ -549,15 +578,11 @@ const WorktreeCard = React.memo(function WorktreeCard({
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             {repo && !hideRepoBadge && (
-              <div className="flex items-center gap-1.5 shrink-0 px-1.5 py-0.5 rounded-[4px] bg-accent border border-border dark:bg-accent/50 dark:border-border/60">
-                <div
-                  className="size-1.5 rounded-full"
-                  style={{ backgroundColor: repo.badgeColor }}
-                />
-                <span className="text-[10px] font-semibold text-foreground truncate max-w-[6rem] leading-none lowercase">
-                  {repo.displayName}
-                </span>
-              </div>
+              <WorktreeRepoBadge
+                repoId={repo.id}
+                displayName={repo.displayName}
+                badgeColor={repo.badgeColor}
+              />
             )}
 
             {isFolder ? (

@@ -1758,6 +1758,10 @@ export class Store {
         | 'worktreeBaseRef'
         | 'kind'
         | 'issueSourcePreference'
+        | 'symlinkPaths'
+        | 'iconSource'
+        | 'iconPath'
+        | 'iconUrl'
       >
     >
   ): Repo | null {
@@ -1776,6 +1780,19 @@ export class Store {
       Object.assign(repo, rest)
     } else {
       Object.assign(repo, updates)
+    }
+    // Why: same "explicit undefined means drop the key" treatment as
+    // issueSourcePreference above — without this, switching from a manual
+    // path back to auto-without-a-result would leave the stale iconPath on
+    // disk and the renderer would keep loading the old image.
+    if ('iconPath' in updates && updates.iconPath === undefined) {
+      delete repo.iconPath
+    }
+    if ('iconUrl' in updates && updates.iconUrl === undefined) {
+      delete repo.iconUrl
+    }
+    if ('iconSource' in updates && updates.iconSource === undefined) {
+      delete repo.iconSource
     }
     this.scheduleSave()
     return this.hydrateRepo(repo)

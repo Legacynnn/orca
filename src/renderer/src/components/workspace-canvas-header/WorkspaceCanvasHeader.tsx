@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Folder } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { WorkspaceIcon } from '../workspace-icon/WorkspaceIcon'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -157,14 +158,10 @@ export default function WorkspaceCanvasHeader(): React.JSX.Element | null {
         aria-hidden
       />
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {/* Why: placeholder folder glyph. Slot reserved for a per-project icon
-            once repos can store one. */}
-        <span
-          aria-hidden
-          className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
-        >
-          <Folder className="size-3.5" />
-        </span>
+        {/* Why: per-project icon resolved from disk or GitHub, with the folder
+            glyph as the fallback. Sized to match the existing 20px slot so the
+            breadcrumb baseline stays aligned with the editor button row. */}
+        <WorkspaceIcon repoId={repo.id} sizePx={20} />
         <span className="truncate text-[13px] font-medium text-foreground">{repo.displayName}</span>
         <ChevronRight className="size-3 shrink-0 text-muted-foreground" aria-hidden />
         <span className="truncate text-[13px] text-muted-foreground">
