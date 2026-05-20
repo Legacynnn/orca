@@ -23,6 +23,28 @@ import {
   FileVideo,
   type LucideIcon
 } from 'lucide-react'
+import {
+  SiAstro,
+  SiC,
+  SiCplusplus,
+  SiDart,
+  SiDotnet,
+  SiGo,
+  SiJavascript,
+  SiKotlin,
+  SiLua,
+  SiOpenjdk,
+  SiPhp,
+  SiPython,
+  SiReact,
+  SiRuby,
+  SiRust,
+  SiSvelte,
+  SiSwift,
+  SiTypescript,
+  SiVuedotjs
+} from 'react-icons/si'
+import type { IconType } from 'react-icons'
 
 const FILE_ICON_BY_NAME: Record<string, LucideIcon> = {
   '.babelrc': FileSliders,
@@ -276,6 +298,50 @@ const FILE_ICON_BY_EXTENSION: Record<string, LucideIcon> = {
   zsh: FileTerminal
 }
 
+/**
+ * Both Lucide and react-icons components accept `className` + render with
+ * `currentColor` by default, so callers can style them identically.
+ */
+export type FileIconComponent = LucideIcon | IconType
+
+export type FileIconSpec = {
+  Icon: FileIconComponent
+  isTest: boolean
+}
+
+const LANGUAGE_ICON_BY_EXTENSION: Record<string, FileIconComponent> = {
+  astro: SiAstro,
+  c: SiC,
+  cc: SiCplusplus,
+  cjs: SiJavascript,
+  cpp: SiCplusplus,
+  cs: SiDotnet,
+  cts: SiTypescript,
+  cxx: SiCplusplus,
+  dart: SiDart,
+  go: SiGo,
+  h: SiC,
+  hpp: SiCplusplus,
+  hxx: SiCplusplus,
+  java: SiOpenjdk,
+  js: SiJavascript,
+  jsx: SiReact,
+  kt: SiKotlin,
+  kts: SiKotlin,
+  lua: SiLua,
+  mjs: SiJavascript,
+  mts: SiTypescript,
+  php: SiPhp,
+  py: SiPython,
+  rb: SiRuby,
+  rs: SiRust,
+  svelte: SiSvelte,
+  swift: SiSwift,
+  ts: SiTypescript,
+  tsx: SiTypescript,
+  vue: SiVuedotjs
+}
+
 const COMPOUND_EXTENSIONS = ['tar.bz2', 'tar.gz', 'tar.xz']
 
 function getFilename(filePath: string): string {
@@ -319,9 +385,10 @@ function getExtension(filename: string): string {
   return filename.slice(lastDot + 1).toLowerCase()
 }
 
-export function getFileTypeIcon(filePath: string): LucideIcon {
+function resolveIconComponent(filePath: string): FileIconComponent {
   const filename = getFilename(filePath)
   const lowerName = filename.toLowerCase()
+
   const exactMatch = FILE_ICON_BY_NAME[lowerName]
   if (exactMatch) {
     return exactMatch
@@ -339,7 +406,24 @@ export function getFileTypeIcon(filePath: string): LucideIcon {
     return FileTerminal
   }
 
+  const extension = getExtension(filename)
+  // Language brand marks beat the generic FileCode when both apply.
   // Why: filename/extension matching keeps icons deterministic for SSH worktrees
   // where OS-native file associations are not available.
-  return FILE_ICON_BY_EXTENSION[getExtension(filename)] ?? File
+  return LANGUAGE_ICON_BY_EXTENSION[extension] ?? FILE_ICON_BY_EXTENSION[extension] ?? File
+}
+
+export function getFileIconSpec(filePath: string): FileIconSpec {
+  return {
+    Icon: resolveIconComponent(filePath),
+    isTest: isTestFile(filePath)
+  }
+}
+
+/**
+ * Returns just the icon component for callers that don't need the test-file
+ * flag. New code should prefer getFileIconSpec.
+ */
+export function getFileTypeIcon(filePath: string): FileIconComponent {
+  return resolveIconComponent(filePath)
 }
