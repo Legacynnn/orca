@@ -1,46 +1,35 @@
-/* eslint-disable max-lines -- Why: the board drawer owns shared board state, drag/drop, and settings callbacks that need one coordinated surface. */
+/* eslint-disable max-lines -- Why: the dashboard owns shared board state, drag/drop, and settings callbacks that need one coordinated surface. */
 import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { Kanban, LayoutList, Rows3 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { useAllWorktrees, useRepoMap } from '@/store/selectors'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
-import WorkspaceKanbanAreaSelectionOverlay from './WorkspaceKanbanAreaSelectionOverlay'
-import WorkspaceKanbanDrawerHeader from './WorkspaceKanbanDrawerHeader'
-import WorkspaceKanbanLaneGrid from './WorkspaceKanbanLaneGrid'
-import WorkspaceKanbanPinDropTarget from './WorkspaceKanbanPinDropTarget'
+import RepoDotLabel from '@/components/repo/RepoDotLabel'
+import SidebarFilter from '@/components/sidebar/SidebarFilter'
+import WorkspaceKanbanAreaSelectionOverlay from '@/components/sidebar/WorkspaceKanbanAreaSelectionOverlay'
+import WorkspaceKanbanLaneGrid from '@/components/sidebar/WorkspaceKanbanLaneGrid'
+import WorkspaceKanbanPinDropTarget from '@/components/sidebar/WorkspaceKanbanPinDropTarget'
+import WorkspaceKanbanSettingsMenu from '@/components/sidebar/WorkspaceKanbanSettingsMenu'
 import {
   getWorkspaceStatus,
   hasWorkspaceDragData,
   readWorkspaceDragDataIds
-} from './workspace-status'
-import { useWorkspaceStatusDocumentDrop } from './use-workspace-status-drop'
-import { useWorkspaceKanbanAreaSelection } from './use-workspace-kanban-area-selection'
-import { useWorkspaceKanbanCardPointerDrag } from './use-workspace-kanban-card-pointer-drag'
-import { useWorkspaceKanbanColumnResize } from './use-workspace-kanban-column-resize'
-import { useWorkspaceKanbanCreateWorktree } from './use-workspace-kanban-create-worktree'
-import { useWorkspaceKanbanSelection } from './use-workspace-kanban-selection'
-import { useWorkspaceKanbanShiftWheelScroll } from './use-workspace-kanban-shift-wheel-scroll'
-import {
-  isWorkspaceBoardKeepOpenTarget,
-  useWorkspaceKanbanOutsideDismiss
-} from './use-workspace-kanban-outside-dismiss'
-import { useVisibleWorkspaceKanbanWorktreeIds } from './use-visible-workspace-kanban-worktree-ids'
-import { groupWorkspaceKanbanWorktrees } from './workspace-kanban-worktree-groups'
+} from '@/components/sidebar/workspace-status'
+import { useWorkspaceStatusDocumentDrop } from '@/components/sidebar/use-workspace-status-drop'
+import { useWorkspaceKanbanAreaSelection } from '@/components/sidebar/use-workspace-kanban-area-selection'
+import { useWorkspaceKanbanCardPointerDrag } from '@/components/sidebar/use-workspace-kanban-card-pointer-drag'
+import { useWorkspaceKanbanColumnResize } from '@/components/sidebar/use-workspace-kanban-column-resize'
+import { useWorkspaceKanbanCreateWorktree } from '@/components/sidebar/use-workspace-kanban-create-worktree'
+import { useWorkspaceKanbanSelection } from '@/components/sidebar/use-workspace-kanban-selection'
+import { useWorkspaceKanbanShiftWheelScroll } from '@/components/sidebar/use-workspace-kanban-shift-wheel-scroll'
+import { useVisibleWorkspaceKanbanWorktreeIds } from '@/components/sidebar/use-visible-workspace-kanban-worktree-ids'
+import { groupWorkspaceKanbanWorktrees } from '@/components/sidebar/workspace-kanban-worktree-groups'
 import type { WorkspaceStatus } from '../../../../shared/types'
 import { makeWorkspaceStatusId } from '../../../../shared/workspace-statuses'
 
-type WorkspaceKanbanDrawerProps = {
-  open: boolean
-  preserveOpenForMenu: boolean
-  onOpenChange: (open: boolean) => void
-  onMenuOpenChange: (open: boolean) => void
-}
-
-export default function WorkspaceKanbanDrawer({
-  open,
-  preserveOpenForMenu,
-  onOpenChange,
-  onMenuOpenChange
-}: WorkspaceKanbanDrawerProps): React.JSX.Element {
+export default function DashboardPage(): React.JSX.Element {
   const allWorktrees = useAllWorktrees()
   const repoMap = useRepoMap()
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -54,8 +43,10 @@ export default function WorkspaceKanbanDrawer({
   const setWorkspaceBoardCompact = useAppStore((s) => s.setWorkspaceBoardCompact)
   const workspaceBoardColumnWidth = useAppStore((s) => s.workspaceBoardColumnWidth)
   const setWorkspaceBoardColumnWidth = useAppStore((s) => s.setWorkspaceBoardColumnWidth)
-  const sidebarOpen = useAppStore((s) => s.sidebarOpen)
-  const sidebarWidth = useAppStore((s) => s.sidebarWidth)
+  const closeDashboardPage = useAppStore((s) => s.closeDashboardPage)
+  const repos = useAppStore((s) => s.repos)
+  const filterRepoIds = useAppStore((s) => s.filterRepoIds)
+  const setFilterRepoIds = useAppStore((s) => s.setFilterRepoIds)
   const boardRef = useRef<HTMLDivElement>(null)
   const laneScrollerRef = useRef<HTMLDivElement>(null)
   const areaSelectionOverlayRef = useRef<HTMLDivElement>(null)
@@ -82,6 +73,11 @@ export default function WorkspaceKanbanDrawer({
     () => workspaceStatuses.flatMap((status) => worktreesByStatus.get(status.id) ?? []),
     [worktreesByStatus, workspaceStatuses]
   )
+  // Why: the kanban hooks gate their work on an `open` flag from the old drawer
+  // implementation. On the dashboard page the board is always "open" while the
+  // page is mounted, so pass `true` to keep selection, drag, and area-select
+  // wired up.
+  const isBoardOpen = true
   const {
     selectedWorktreeIds,
     selectedWorktrees,
@@ -89,9 +85,9 @@ export default function WorkspaceKanbanDrawer({
     updateSelectionForGesture,
     updateSelectionForArea,
     selectForContextMenu
-  } = useWorkspaceKanbanSelection(open, boardWorktrees)
+  } = useWorkspaceKanbanSelection(isBoardOpen, boardWorktrees)
   const { handleAreaSelectionPointerDown } = useWorkspaceKanbanAreaSelection({
-    open,
+    open: isBoardOpen,
     boardRef,
     overlayRef: areaSelectionOverlayRef,
     selectedWorktreeIds,
@@ -154,7 +150,7 @@ export default function WorkspaceKanbanDrawer({
     [updateWorktreesMeta, worktreeById]
   )
   const { isPointerDragActiveRef, onCardPointerDownCapture } = useWorkspaceKanbanCardPointerDrag({
-    open,
+    open: isBoardOpen,
     boardRef,
     selectedWorktreeIds,
     selectedWorktrees,
@@ -215,9 +211,12 @@ export default function WorkspaceKanbanDrawer({
     [moveWorktreesToStatus]
   )
 
+  // Why: activating a workspace from the dashboard sends the user to its
+  // terminal view. Closing the page records the navigation back to whichever
+  // view was active before the dashboard opened.
   const handleWorktreeActivate = useCallback(() => {
-    onOpenChange(false)
-  }, [onOpenChange])
+    closeDashboardPage()
+  }, [closeDashboardPage])
 
   const handleOpacityChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -308,126 +307,172 @@ export default function WorkspaceKanbanDrawer({
     moveWorktreeToStatus,
     pinWorktree,
     handleDragFinish,
-    open,
+    isBoardOpen,
     {
       onMoveWorktreesToStatus: moveWorktreesToStatus,
       onPinWorktrees: pinWorktrees
     }
   )
 
-  useWorkspaceKanbanShiftWheelScroll(boardRef, laneScrollerRef, open, isPointerDragActiveRef)
-  useWorkspaceKanbanOutsideDismiss({ open, boardRef, preserveOpenForMenu, onOpenChange })
+  useWorkspaceKanbanShiftWheelScroll(boardRef, laneScrollerRef, isBoardOpen, isPointerDragActiveRef)
 
   const opacityPercent = Math.round(workspaceBoardOpacity * 100)
-  const drawerLeft = sidebarOpen ? sidebarWidth : 0
-  const drawerLeftCss = sidebarOpen
-    ? `var(--workspace-sidebar-live-width, ${sidebarWidth}px)`
-    : '0px'
+  const BoardModeIcon = workspaceBoardCompact ? Rows3 : LayoutList
+  const selectedCount = selectedWorktrees.length
+  const canFilterRepos = repos.length > 1
+  // Why: an empty `filterRepoIds` means "show all", so when nothing is selected
+  // every pill should read as active. Once the user picks any repo, only the
+  // picked ones light up.
+  const selectedRepoIds = useMemo(() => new Set(filterRepoIds), [filterRepoIds])
+  const allReposSelected = selectedRepoIds.size === 0
+  const handleToggleRepoFilter = useCallback(
+    (repoId: string) => {
+      if (allReposSelected) {
+        // Why: jumping from "all repos" to "only this one" matches what a user
+        // expects when they click a chip in the unfiltered state — otherwise
+        // the first click would invert the entire list to "everything except".
+        setFilterRepoIds([repoId])
+        return
+      }
+      const next = filterRepoIds.includes(repoId)
+        ? filterRepoIds.filter((id) => id !== repoId)
+        : [...filterRepoIds, repoId]
+      setFilterRepoIds(next)
+    },
+    [allReposSelected, filterRepoIds, setFilterRepoIds]
+  )
+  const handleClearRepoFilter = useCallback(() => {
+    setFilterRepoIds([])
+  }, [setFilterRepoIds])
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
-      <SheetContent
-        side="left"
-        showCloseButton={false}
-        className="workspace-kanban-sheet-content bg-sidebar p-0 sm:max-w-none"
-        overlayStyle={{ top: 36, left: drawerLeftCss, pointerEvents: 'none' }}
-        style={
-          {
-            // Why: the board is a companion to the workspace sidebar, so it
-            // expands from the sidebar edge instead of covering the sidebar.
-            left: drawerLeftCss,
-            top: 36,
-            height: 'calc(100% - 36px)',
-            width: `min(calc(100vw - ${drawerLeftCss}), 1294px)`,
-            opacity: workspaceBoardOpacity
-          } as React.CSSProperties
-        }
-        data-workspace-board-compact={workspaceBoardCompact ? 'true' : 'false'}
-        onOpenAutoFocus={(event) => {
-          // Why: Radix focuses the first toolbar button on open, which opens
-          // its tooltip without hover and makes the drawer feel noisy.
-          event.preventDefault()
-        }}
-        onInteractOutside={(event) => {
-          const originalEvent = event.detail.originalEvent
-          const target = originalEvent.target
-          if (preserveOpenForMenu) {
-            // Why: the first outside click should close a board dropdown, not
-            // also dismiss the board that owns the dropdown.
-            event.preventDefault()
-            return
-          }
-          if (isWorkspaceBoardKeepOpenTarget(target)) {
-            event.preventDefault()
-            return
-          }
-          const liveDrawerLeft =
-            boardRef.current
-              ?.closest<HTMLElement>('[data-slot="sheet-content"]')
-              ?.getBoundingClientRect().left ?? drawerLeft
-          if (originalEvent instanceof PointerEvent && originalEvent.clientX < liveDrawerLeft) {
-            // Why: keep the workspace sidebar interactive while the companion board stays open.
-            event.preventDefault()
-          }
-        }}
-      >
-        <WorkspaceKanbanDrawerHeader
-          selectedCount={selectedWorktrees.length}
-          compact={workspaceBoardCompact}
-          opacityPercent={opacityPercent}
-          workspaceStatuses={workspaceStatuses}
-          onCompactChange={setWorkspaceBoardCompact}
-          onOpacityChange={handleOpacityChange}
-          onRenameStatus={handleRenameStatus}
-          onChangeStatusColor={handleChangeStatusColor}
-          onChangeStatusIcon={handleChangeStatusIcon}
-          onMoveStatus={handleMoveStatus}
-          onRemoveStatus={handleRemoveStatus}
-          onAddStatus={handleAddStatus}
-          onFilterMenuOpenChange={onMenuOpenChange}
-        />
-        <div
-          ref={boardRef}
-          className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-3"
-          data-workspace-board-selection-surface=""
-          onPointerDownCapture={onCardPointerDownCapture}
-          onPointerDown={handleAreaSelectionPointerDown}
-        >
-          <WorkspaceKanbanAreaSelectionOverlay ref={areaSelectionOverlayRef} />
-          <WorkspaceKanbanPinDropTarget
-            isDragOver={pinDragOver}
-            onDragOver={handlePinDragOver}
-            onDragLeave={handlePinDragLeave}
-          />
-          <div
-            ref={laneScrollerRef}
-            className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scrollbar-sleek"
-          >
-            <WorkspaceKanbanLaneGrid
-              statuses={workspaceStatuses}
-              worktreesByStatus={worktreesByStatus}
-              repoMap={repoMap}
-              activeWorktreeId={activeWorktreeId}
-              compact={workspaceBoardCompact}
-              columnWidth={columnWidth}
-              isResizingColumn={isResizingColumn}
-              dragOverStatus={dragOverStatus}
-              canCreateWorktree={canCreateWorktree}
-              selectedWorktreeIds={selectedWorktreeIds}
-              selectedWorktrees={selectedWorktrees}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onActivate={handleWorktreeActivate}
-              onSelectionGesture={updateSelectionForGesture}
-              onContextMenuSelect={selectForContextMenu}
-              onCreateWorktree={createWorktreeForStatus}
-              onColumnResizeStart={onColumnResizeStart}
-              onColumnResizeKeyDown={onColumnResizeKeyDown}
+    <main
+      className="relative flex h-full min-h-0 flex-col bg-background text-foreground"
+      data-workspace-board-compact={workspaceBoardCompact ? 'true' : 'false'}
+    >
+      <header className="flex shrink-0 flex-col gap-2 px-5 pb-3 pt-1.5 md:px-8">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Kanban className="size-4 text-muted-foreground" strokeWidth={2.25} />
+            <h1 className="text-sm font-semibold">Dashboard</h1>
+            {selectedCount > 1 ? (
+              <span className="rounded-full bg-sidebar-accent px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {selectedCount} selected
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1">
+            <SidebarFilter tooltipSide="bottom" contentSide="bottom" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant={workspaceBoardCompact ? 'secondary' : 'ghost'}
+                  size="icon-xs"
+                  aria-pressed={workspaceBoardCompact}
+                  aria-label={
+                    workspaceBoardCompact ? 'Compact workspace cards' : 'Detailed workspace cards'
+                  }
+                  onClick={() => setWorkspaceBoardCompact(!workspaceBoardCompact)}
+                >
+                  <BoardModeIcon className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                {workspaceBoardCompact ? 'Show detailed cards' : 'Show compact cards'}
+              </TooltipContent>
+            </Tooltip>
+            <WorkspaceKanbanSettingsMenu
+              opacityPercent={opacityPercent}
+              workspaceStatuses={workspaceStatuses}
+              onOpacityChange={handleOpacityChange}
+              onRenameStatus={handleRenameStatus}
+              onChangeStatusColor={handleChangeStatusColor}
+              onChangeStatusIcon={handleChangeStatusIcon}
+              onMoveStatus={handleMoveStatus}
+              onRemoveStatus={handleRemoveStatus}
+              onAddStatus={handleAddStatus}
             />
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+        {canFilterRepos ? (
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-sleek">
+            <button
+              type="button"
+              onClick={handleClearRepoFilter}
+              aria-pressed={allReposSelected}
+              className={cn(
+                'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                allReposSelected
+                  ? 'border-foreground/20 bg-foreground/10 text-foreground'
+                  : 'border-border/60 bg-transparent text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+              )}
+            >
+              All repos
+            </button>
+            {repos.map((repo) => {
+              const checked = !allReposSelected && selectedRepoIds.has(repo.id)
+              return (
+                <button
+                  key={repo.id}
+                  type="button"
+                  onClick={() => handleToggleRepoFilter(repo.id)}
+                  aria-pressed={checked}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',
+                    checked
+                      ? 'border-foreground/20 bg-foreground/10 text-foreground'
+                      : 'border-border/60 bg-transparent text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+                  )}
+                >
+                  <RepoDotLabel name={repo.displayName} color={repo.badgeColor} />
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </header>
+      <div
+        ref={boardRef}
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3"
+        data-workspace-board-selection-surface=""
+        onPointerDownCapture={onCardPointerDownCapture}
+        onPointerDown={handleAreaSelectionPointerDown}
+      >
+        <WorkspaceKanbanAreaSelectionOverlay ref={areaSelectionOverlayRef} />
+        <WorkspaceKanbanPinDropTarget
+          isDragOver={pinDragOver}
+          onDragOver={handlePinDragOver}
+          onDragLeave={handlePinDragLeave}
+        />
+        <div
+          ref={laneScrollerRef}
+          className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden scrollbar-sleek"
+        >
+          <WorkspaceKanbanLaneGrid
+            statuses={workspaceStatuses}
+            worktreesByStatus={worktreesByStatus}
+            repoMap={repoMap}
+            activeWorktreeId={activeWorktreeId}
+            compact={workspaceBoardCompact}
+            columnWidth={columnWidth}
+            isResizingColumn={isResizingColumn}
+            dragOverStatus={dragOverStatus}
+            canCreateWorktree={canCreateWorktree}
+            selectedWorktreeIds={selectedWorktreeIds}
+            selectedWorktrees={selectedWorktrees}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onActivate={handleWorktreeActivate}
+            onSelectionGesture={updateSelectionForGesture}
+            onContextMenuSelect={selectForContextMenu}
+            onCreateWorktree={createWorktreeForStatus}
+            onColumnResizeStart={onColumnResizeStart}
+            onColumnResizeKeyDown={onColumnResizeKeyDown}
+          />
+        </div>
+      </div>
+    </main>
   )
 }

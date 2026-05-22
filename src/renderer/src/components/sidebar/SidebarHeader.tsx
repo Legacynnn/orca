@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Kanban, Plus, SlidersHorizontal } from 'lucide-react'
+import React from 'react'
+import { Plus, SlidersHorizontal } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { WorktreeCardProperty } from '../../../../shared/types'
 import SidebarFilter from './SidebarFilter'
-import WorkspaceKanbanDrawer from './WorkspaceKanbanDrawer'
 
 const GROUP_BY_OPTIONS = [
   { id: 'none', label: 'None' },
@@ -51,8 +50,6 @@ const newWorktreeShortcutLabel = isMac ? '⌘N' : 'Ctrl+N'
 const HEADER_ACTION_HIT_TARGET_CLASS = 'relative z-20'
 
 const SidebarHeader = React.memo(function SidebarHeader() {
-  const [workspaceBoardOpen, setWorkspaceBoardOpen] = useState(false)
-  const [workspaceBoardMenuOpen, setWorkspaceBoardMenuOpen] = useState(false)
   const openModal = useAppStore((s) => s.openModal)
   const repos = useAppStore((s) => s.repos)
   const canCreateWorktree = repos.some((repo) => isGitRepoKind(repo))
@@ -64,227 +61,148 @@ const SidebarHeader = React.memo(function SidebarHeader() {
   const groupBy = useAppStore((s) => s.groupBy)
   const setGroupBy = useAppStore((s) => s.setGroupBy)
 
-  const handleWorkspaceBoardOpenChange = useCallback((open: boolean) => {
-    setWorkspaceBoardOpen(open)
-    if (!open) {
-      setWorkspaceBoardMenuOpen(false)
-    }
-  }, [])
-
-  const handleWorkspaceBoardToggle = useCallback(() => {
-    setWorkspaceBoardOpen((open) => !open)
-  }, [])
-
-  useEffect(() => {
-    if (!workspaceBoardOpen) {
-      return
-    }
-
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return
-      }
-      if (workspaceBoardMenuOpen) {
-        return
-      }
-      // Why: Escape must dismiss any nested overlay (Radix dropdown, popover,
-      // tooltip, dialog, context menu) ahead of collapsing this non-modal
-      // companion panel. Radix portals open popper content into a wrapper
-      // element, and dialogs/menus expose `data-state="open"` on their
-      // content node, so the presence of either signals the user's intent
-      // is to dismiss that overlay rather than the workspace board.
-      if (
-        document.querySelector(
-          '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
-        )
-      ) {
-        return
-      }
-      event.preventDefault()
-      setWorkspaceBoardOpen(false)
-    }
-
-    // Why: the workspace board is a non-modal companion panel, so focus may
-    // be outside the sheet when Escape should still dismiss it.
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [workspaceBoardMenuOpen, workspaceBoardOpen])
-
   return (
-    <>
+    <div
+      // Why: the empty middle of this header (everything `justify-between`
+      // pushes out of) drags the window so the "Workspaces" strip behaves
+      // like an extension of the titlebar. The two flex children below
+      // override with `no-drag` so the filter, sort menu and `+` button
+      // stay clickable and Radix's outside-click dismissal still fires when
+      // their popovers are open.
+      className="mt-2 flex h-8 items-center justify-between px-2 gap-2"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+    >
       <div
-        // Why: the empty middle of this header (everything `justify-between`
-        // pushes out of) drags the window so the "Workspaces" strip behaves
-        // like an extension of the titlebar. The two flex children below
-        // override with `no-drag` so the kanban toggle, filter, sort menu and
-        // `+` button stay clickable and Radix's outside-click dismissal still
-        // fires when their popovers are open.
-        className="mt-2 flex h-8 items-center justify-between px-2 gap-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        className="flex min-w-0 items-center gap-1"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <div
-          className="flex min-w-0 items-center gap-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <span className="pl-2 pr-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80 select-none">
-            Workspaces
-          </span>
+        <span className="pl-2 pr-0.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80 select-none">
+          Workspaces
+        </span>
+      </div>
+      <div
+        className="flex items-center gap-1.5 shrink-0"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        <SidebarFilter />
+        <DropdownMenu modal={false}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant={workspaceBoardOpen ? 'secondary' : 'ghost'}
-                size="icon-xs"
-                className={`${HEADER_ACTION_HIT_TARGET_CLASS} text-muted-foreground`}
-                aria-label="Workspace board"
-                aria-pressed={workspaceBoardOpen}
-                data-workspace-board-trigger=""
-                onClick={handleWorkspaceBoardToggle}
-              >
-                <Kanban className="size-3.5" strokeWidth={2.25} />
-              </Button>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className={`${HEADER_ACTION_HIT_TARGET_CLASS} text-muted-foreground`}
+                  aria-label="View options"
+                >
+                  <SlidersHorizontal className="size-3.5" strokeWidth={2.25} />
+                </Button>
+              </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={6}>
-              {workspaceBoardOpen ? 'Close workspace board' : 'Workspace board'}
+              View options
             </TooltipContent>
           </Tooltip>
-        </div>
-        <div
-          className="flex items-center gap-1.5 shrink-0"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <SidebarFilter preserveWorkspaceBoardOpen onMenuOpenChange={setWorkspaceBoardMenuOpen} />
-          <DropdownMenu modal={false} onOpenChange={setWorkspaceBoardMenuOpen}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className={`${HEADER_ACTION_HIT_TARGET_CLASS} text-muted-foreground`}
-                    aria-label="View options"
-                    data-workspace-board-preserve-open=""
-                  >
-                    <SlidersHorizontal className="size-3.5" strokeWidth={2.25} />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={6}>
-                View options
-              </TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent
-              side="right"
-              align="start"
-              sideOffset={8}
-              className="w-56 pb-2"
-              data-workspace-board-preserve-open=""
-            >
-              <DropdownMenuLabel>Group by</DropdownMenuLabel>
-              <div className="px-2 pt-0.5 pb-1">
-                <ToggleGroup
-                  type="single"
-                  value={groupBy}
-                  onValueChange={(v) => {
-                    if (v) {
-                      setGroupBy(v as typeof groupBy)
-                    }
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="h-6 w-full justify-start"
-                >
-                  {GROUP_BY_OPTIONS.map((opt) => (
-                    <ToggleGroupItem
-                      key={opt.id}
-                      value={opt.id}
-                      className="h-6 px-2 text-[10px] data-[state=on]:bg-foreground/10 data-[state=on]:font-semibold data-[state=on]:text-foreground"
-                    >
-                      {opt.label}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </div>
-
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={sortBy}
-                onValueChange={(v) => setSortBy(v as typeof sortBy)}
-              >
-                {SORT_OPTIONS.map((opt) => {
-                  const radioItem = (
-                    <DropdownMenuRadioItem
-                      key={opt.id}
-                      value={opt.id}
-                      // Keep the menu open so people can compare sort modes and
-                      // toggle card properties without reopening the same panel.
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {opt.label}
-                    </DropdownMenuRadioItem>
-                  )
-                  if (!opt.description) {
-                    return radioItem
+          <DropdownMenuContent side="right" align="start" sideOffset={8} className="w-56 pb-2">
+            <DropdownMenuLabel>Group by</DropdownMenuLabel>
+            <div className="px-2 pt-0.5 pb-1">
+              <ToggleGroup
+                type="single"
+                value={groupBy}
+                onValueChange={(v) => {
+                  if (v) {
+                    setGroupBy(v as typeof groupBy)
                   }
-                  return (
-                    <Tooltip key={opt.id}>
-                      <TooltipTrigger asChild>{radioItem}</TooltipTrigger>
-                      <TooltipContent side="right" sideOffset={6}>
-                        {opt.description}
-                      </TooltipContent>
-                    </Tooltip>
-                  )
-                })}
-              </DropdownMenuRadioGroup>
-
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Show properties</DropdownMenuLabel>
-              {PROPERTY_OPTIONS.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.id}
-                  checked={worktreeCardProperties.includes(opt.id)}
-                  onCheckedChange={() => toggleWorktreeCardProperty(opt.id)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className={HEADER_ACTION_HIT_TARGET_CLASS}
-                onClick={() => {
-                  if (!canCreateWorktree) {
-                    return
-                  }
-                  openModal('new-workspace-composer', { telemetrySource: 'sidebar' })
                 }}
-                aria-label="New workspace"
-                disabled={!canCreateWorktree}
+                variant="outline"
+                size="sm"
+                className="h-6 w-full justify-start"
               >
-                <Plus className="size-3.5" strokeWidth={2.25} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={6}>
-              {canCreateWorktree
-                ? `New workspace (${newWorktreeShortcutLabel})`
-                : 'Add a Git project to create worktrees'}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+                {GROUP_BY_OPTIONS.map((opt) => (
+                  <ToggleGroupItem
+                    key={opt.id}
+                    value={opt.id}
+                    className="h-6 px-2 text-[10px] data-[state=on]:bg-foreground/10 data-[state=on]:font-semibold data-[state=on]:text-foreground"
+                  >
+                    {opt.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={sortBy}
+              onValueChange={(v) => setSortBy(v as typeof sortBy)}
+            >
+              {SORT_OPTIONS.map((opt) => {
+                const radioItem = (
+                  <DropdownMenuRadioItem
+                    key={opt.id}
+                    value={opt.id}
+                    // Keep the menu open so people can compare sort modes and
+                    // toggle card properties without reopening the same panel.
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                )
+                if (!opt.description) {
+                  return radioItem
+                }
+                return (
+                  <Tooltip key={opt.id}>
+                    <TooltipTrigger asChild>{radioItem}</TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={6}>
+                      {opt.description}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </DropdownMenuRadioGroup>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Show properties</DropdownMenuLabel>
+            {PROPERTY_OPTIONS.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.id}
+                checked={worktreeCardProperties.includes(opt.id)}
+                onCheckedChange={() => toggleWorktreeCardProperty(opt.id)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className={HEADER_ACTION_HIT_TARGET_CLASS}
+              onClick={() => {
+                if (!canCreateWorktree) {
+                  return
+                }
+                openModal('new-workspace-composer', { telemetrySource: 'sidebar' })
+              }}
+              aria-label="New workspace"
+              disabled={!canCreateWorktree}
+            >
+              <Plus className="size-3.5" strokeWidth={2.25} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={6}>
+            {canCreateWorktree
+              ? `New workspace (${newWorktreeShortcutLabel})`
+              : 'Add a Git project to create worktrees'}
+          </TooltipContent>
+        </Tooltip>
       </div>
-      <WorkspaceKanbanDrawer
-        open={workspaceBoardOpen}
-        preserveOpenForMenu={workspaceBoardMenuOpen}
-        onOpenChange={handleWorkspaceBoardOpenChange}
-        onMenuOpenChange={setWorkspaceBoardMenuOpen}
-      />
-    </>
+    </div>
   )
 })
 

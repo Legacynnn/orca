@@ -175,6 +175,7 @@ const AutomationsPage = lazy(() => import('./components/automations/AutomationsP
 const ActivityPrototypePage = lazy(() => import('./components/activity/ActivityPrototypePage'))
 const Settings = lazy(() => import('./components/settings/Settings'))
 const SkillsPage = lazy(() => import('./components/skills/SkillsPage'))
+const DashboardPage = lazy(() => import('./components/dashboard/DashboardPage'))
 const WorkspaceSpacePage = lazy(() => import('./components/workspace-space/WorkspaceSpacePage'))
 const QuickOpen = lazy(() => import('./components/QuickOpen'))
 const WorktreeJumpPalette = lazy(() => import('./components/WorktreeJumpPalette'))
@@ -976,7 +977,8 @@ function App(): React.JSX.Element {
     activeView !== 'activity' &&
     activeView !== 'automations' &&
     activeView !== 'space' &&
-    activeView !== 'skills'
+    activeView !== 'skills' &&
+    activeView !== 'dashboard'
 
   const handleToggleExpand = (): void => {
     if (!effectiveActiveTabId) {
@@ -1015,7 +1017,8 @@ function App(): React.JSX.Element {
         activeView !== 'activity' &&
         activeView !== 'automations' &&
         activeView !== 'space' &&
-        activeView !== 'skills'
+        activeView !== 'skills' &&
+        activeView !== 'dashboard'
 
       const openSearchSidebar = (query: string | null): void => {
         if (query && activeWorktreeId) {
@@ -1391,7 +1394,8 @@ function App(): React.JSX.Element {
         activeView === 'activity' ||
         activeView === 'automations' ||
         activeView === 'space' ||
-        activeView === 'skills') &&
+        activeView === 'skills' ||
+        activeView === 'dashboard') &&
       rightSidebarOpen
     ) {
       // Why: hide the right sidebar immediately when entering full-page
@@ -1532,12 +1536,36 @@ function App(): React.JSX.Element {
                 )
               ) : null}
               <div className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
-                {/* Why: right sidebar toggle floats at the top-right of the center
-                    column so it's always accessible whether the right sidebar is
-                    open or closed. Match the RightSidebar header's 36px height and
-                    top-0 anchor so the icon's vertical center is identical between
-                    open and closed states — otherwise toggling makes the icon jump
-                    a few pixels, which reads as layout jitter. */}
+                <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+                  <div
+                    className={
+                      activeView !== 'terminal' || !activeWorktreeId
+                        ? 'hidden flex-1 min-w-0 min-h-0'
+                        : 'flex flex-1 min-w-0 min-h-0'
+                    }
+                  >
+                    <Terminal />
+                  </div>
+                  <Suspense fallback={null}>
+                    {activeView === 'settings' ? <Settings /> : null}
+                    {activeView === 'skills' ? <SkillsPage /> : null}
+                    {activeView === 'tasks' ? <TaskPage /> : null}
+                    {activeView === 'automations' ? <AutomationsPage /> : null}
+                    {activeView === 'activity' ? <ActivityPrototypePage /> : null}
+                    {activeView === 'space' ? <WorkspaceSpacePage /> : null}
+                    {activeView === 'dashboard' ? <DashboardPage /> : null}
+                    {activeView === 'terminal' && !activeWorktreeId ? <Landing /> : null}
+                  </Suspense>
+                  {/* Why: bottom-docked integrated terminal sits at the foot of
+                      the center column with a fixed height + shrink-0, so it
+                      pushes whichever view is active (terminal/settings/tasks/...)
+                      up rather than overlaying it. Toggled by Cmd+J (mac) /
+                      Ctrl+Shift+J (Win/Linux). */}
+                  <IntegratedTerminalPanel />
+                </div>
+                {/* Why: render this after the canvas/header subtree in DOM order;
+                    Electron's drag-region hit testing ignores z-index, so an
+                    earlier no-drag toggle can be swallowed by later drag regions. */}
                 {workspaceActive && !rightSidebarOpen && (
                   <div
                     className="absolute top-0 z-10 flex items-center h-[36px]"
@@ -1558,32 +1586,6 @@ function App(): React.JSX.Element {
                     {rightSidebarToggle}
                   </div>
                 )}
-                <div className="flex flex-1 min-w-0 min-h-0 flex-col">
-                  <div
-                    className={
-                      activeView !== 'terminal' || !activeWorktreeId
-                        ? 'hidden flex-1 min-w-0 min-h-0'
-                        : 'flex flex-1 min-w-0 min-h-0'
-                    }
-                  >
-                    <Terminal />
-                  </div>
-                  <Suspense fallback={null}>
-                    {activeView === 'settings' ? <Settings /> : null}
-                    {activeView === 'skills' ? <SkillsPage /> : null}
-                    {activeView === 'tasks' ? <TaskPage /> : null}
-                    {activeView === 'automations' ? <AutomationsPage /> : null}
-                    {activeView === 'activity' ? <ActivityPrototypePage /> : null}
-                    {activeView === 'space' ? <WorkspaceSpacePage /> : null}
-                    {activeView === 'terminal' && !activeWorktreeId ? <Landing /> : null}
-                  </Suspense>
-                  {/* Why: bottom-docked integrated terminal sits at the foot of
-                      the center column with a fixed height + shrink-0, so it
-                      pushes whichever view is active (terminal/settings/tasks/...)
-                      up rather than overlaying it. Toggled by Cmd+J (mac) /
-                      Ctrl+Shift+J (Win/Linux). */}
-                  <IntegratedTerminalPanel />
-                </div>
                 {showFloatingTerminalButton ? (
                   <FloatingTerminalToggleButton
                     // Why: anchor the floating trigger to the center surface so it

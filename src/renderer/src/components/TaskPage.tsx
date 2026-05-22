@@ -3459,39 +3459,16 @@ export default function TaskPage(): React.JSX.Element {
   return (
     <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-background text-foreground">
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* Why: pt-1.5 vertically centers this row's 32px icon cluster (X +
-            source toggles) with the sidebar's "Tasks" nav row. Sidebar Tasks
-            center sits 22px below the titlebar (pt-2 + py-1.5 + half size-4
-            icon). Matching that here needs 6px top padding above the 32px
-            cluster (6 + 16 = 22). The previous pt-3 placed the cluster 6px
-            too low, breaking the visual band across the top chrome. */}
         <div className="mx-auto flex min-h-0 min-w-0 w-full flex-1 flex-col px-5 pt-1.5 pb-5 md:px-8 md:pt-1.5 md:pb-7">
+          <header className="flex shrink-0 items-center gap-2 pb-3">
+            <List className="size-4 text-muted-foreground" strokeWidth={2.25} />
+            <h1 className="text-sm font-semibold">Tasks</h1>
+          </header>
           <div className="flex-none flex flex-col gap-3">
             <section className="flex flex-col gap-3">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    {/* Why: Close is anchored left in the same row as the
-                        source icons so the top chrome is one compact band.
-                        Left-aligned keeps it clear of the app sidebar on the
-                        right edge. */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 rounded-full"
-                          onClick={closeTaskPage}
-                          aria-label="Close tasks"
-                        >
-                          <X className="size-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" sideOffset={6}>
-                        Close · Esc
-                      </TooltipContent>
-                    </Tooltip>
-                    <div className="mx-1 h-5 w-px bg-border/50" aria-hidden />
                     {visibleSourceOptions.map((source) => {
                       const active = taskSource === source.id
                       return (

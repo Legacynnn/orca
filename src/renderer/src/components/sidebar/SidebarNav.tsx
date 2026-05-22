@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bell, CalendarClock, Github, Gitlab, List, Search } from 'lucide-react'
+import { Bell, CalendarClock, Github, Gitlab, Kanban, List } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { useRepoMap } from '@/store/selectors'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,6 @@ import {
   resolveVisibleTaskProvider
 } from '../../../../shared/task-providers'
 
-const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')
 // Why: the sidebar resize handle keeps a wide edge target, but primary nav
 // rows under that strip should remain clickable when their bounds overlap.
 const SIDEBAR_NAV_HIT_TARGET_CLASS = 'relative z-20'
@@ -29,7 +28,7 @@ const SidebarNav = React.memo(function SidebarNav() {
   const openTaskPage = useAppStore((s) => s.openTaskPage)
   const openAutomationsPage = useAppStore((s) => s.openAutomationsPage)
   const openActivityPage = useAppStore((s) => s.openActivityPage)
-  const openModal = useAppStore((s) => s.openModal)
+  const openDashboardPage = useAppStore((s) => s.openDashboardPage)
   const activeView = useAppStore((s) => s.activeView)
   const repos = useAppStore((s) => s.repos)
   const repoMap = useRepoMap()
@@ -110,6 +109,7 @@ const SidebarNav = React.memo(function SidebarNav() {
   const tasksActive = activeView === 'tasks'
   const automationsActive = activeView === 'automations'
   const activityActive = activeView === 'activity'
+  const dashboardActive = activeView === 'dashboard'
   const activityUnreadCount = useAppStore((s) => {
     let count = 0
     for (const worktrees of Object.values(s.worktreesByRepo)) {
@@ -149,6 +149,24 @@ const SidebarNav = React.memo(function SidebarNav() {
 
   return (
     <div className="flex flex-col gap-0.5 px-2 pt-2 pb-1">
+      <button
+        type="button"
+        onClick={openDashboardPage}
+        aria-current={dashboardActive ? 'page' : undefined}
+        className={cn(
+          SIDEBAR_NAV_HIT_TARGET_CLASS,
+          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors',
+          dashboardActive
+            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+            : 'text-sidebar-foreground/60 hover:bg-sidebar-foreground/8'
+        )}
+      >
+        <Kanban
+          className={cn('size-4 shrink-0', !dashboardActive && 'text-sidebar-foreground/30')}
+          strokeWidth={dashboardActive ? 2.25 : 1.75}
+        />
+        <span className="flex-1">Dashboard</span>
+      </button>
       {showTasksButton ? (
         <button
           type="button"
@@ -274,18 +292,6 @@ const SidebarNav = React.memo(function SidebarNav() {
           ) : null}
         </button>
       ) : null}
-      <button
-        type="button"
-        onClick={() => openModal('worktree-palette')}
-        aria-label="Search worktrees and browser tabs"
-        className={`${SIDEBAR_NAV_HIT_TARGET_CLASS} group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight text-sidebar-foreground/60 transition-colors hover:bg-sidebar-foreground/8`}
-      >
-        <Search className="size-4 shrink-0 text-sidebar-foreground/30" strokeWidth={1.75} />
-        <span className="flex-1">Search</span>
-        <kbd className="hidden rounded border border-border/60 bg-background/40 px-1.5 py-px font-mono text-[10px] font-medium text-muted-foreground group-hover:inline-flex items-center">
-          {isMac ? '⌘J' : 'Ctrl+Shift+J'}
-        </kbd>
-      </button>
     </div>
   )
 })

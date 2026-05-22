@@ -4312,9 +4312,9 @@ export default function GitHubItemDialog({
   // usual 900px ceiling. Resets when the dialog opens a different item.
   const [expanded, setExpanded] = useState(false)
   // Why: when expanded, the sheet should expand from the workspace sidebar's
-  // right edge instead of covering it — same pattern as WorkspaceKanbanDrawer.
-  // Read both `sidebarOpen` and the live width CSS var so a sidebar resize
-  // mid-expand keeps the sheet's left edge aligned.
+  // right edge instead of covering it. Read both `sidebarOpen` and the live
+  // width CSS var so a sidebar resize mid-expand keeps the sheet's left edge
+  // aligned.
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const expandedLeftCss = sidebarOpen

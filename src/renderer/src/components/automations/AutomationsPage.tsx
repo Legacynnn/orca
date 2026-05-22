@@ -11,8 +11,7 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Trash2,
-  X
+  Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Badge } from '@/components/ui/badge'
@@ -1216,24 +1215,7 @@ export default function AutomationsPage(): React.JSX.Element {
     <main className="relative flex h-full min-h-0 flex-col bg-background text-foreground">
       <header className="flex shrink-0 items-center justify-between px-5 pb-3 pt-1.5 md:px-8">
         <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 rounded-full"
-                onClick={closeAutomationsPage}
-                aria-label="Close automations"
-              >
-                <X className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={6}>
-              Close · Esc
-            </TooltipContent>
-          </Tooltip>
-          <div className="mx-1 h-5 w-px bg-border/50" aria-hidden />
-          <CalendarClock className="size-4 text-muted-foreground" />
+          <CalendarClock className="size-4 text-muted-foreground" strokeWidth={2.25} />
           <h1 className="text-sm font-semibold">Automations</h1>
           <Tooltip>
             <TooltipTrigger asChild>

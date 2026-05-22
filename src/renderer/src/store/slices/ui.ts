@@ -250,13 +250,71 @@ export type UISlice = {
   acknowledgedAgentsByPaneKey: Record<string, number>
   acknowledgeAgents: (paneKeys: string[]) => void
   unacknowledgeAgents: (paneKeys: string[]) => void
-  activeView: 'terminal' | 'settings' | 'tasks' | 'activity' | 'automations' | 'space' | 'skills'
-  previousViewBeforeTasks: 'terminal' | 'settings' | 'activity' | 'automations' | 'space' | 'skills'
-  previousViewBeforeSettings: 'terminal' | 'tasks' | 'activity' | 'automations' | 'space' | 'skills'
-  previousViewBeforeActivity: 'terminal' | 'settings' | 'tasks' | 'automations' | 'space' | 'skills'
-  previousViewBeforeAutomations: 'terminal' | 'settings' | 'tasks' | 'activity' | 'space' | 'skills'
-  previousViewBeforeSpace: 'terminal' | 'settings' | 'tasks' | 'activity' | 'automations' | 'skills'
-  previousViewBeforeSkills: 'terminal' | 'settings' | 'tasks' | 'activity' | 'automations' | 'space'
+  activeView:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeTasks:
+    | 'terminal'
+    | 'settings'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeSettings:
+    | 'terminal'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeActivity:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'automations'
+    | 'space'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeAutomations:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'space'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeSpace:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'skills'
+    | 'dashboard'
+  previousViewBeforeSkills:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'dashboard'
+  previousViewBeforeDashboard:
+    | 'terminal'
+    | 'settings'
+    | 'tasks'
+    | 'activity'
+    | 'automations'
+    | 'space'
+    | 'skills'
   setActiveView: (view: UISlice['activeView']) => void
   taskPageData: {
     preselectedRepoId?: string
@@ -300,6 +358,8 @@ export type UISlice = {
   closeSpacePage: () => void
   openSkillsPage: () => void
   closeSkillsPage: () => void
+  openDashboardPage: () => void
+  closeDashboardPage: () => void
   setNewWorkspaceDraft: (draft: NonNullable<UISlice['newWorkspaceDraft']>) => void
   clearNewWorkspaceDraft: () => void
   openSettingsPage: () => void
@@ -503,6 +563,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   previousViewBeforeAutomations: 'terminal',
   previousViewBeforeSpace: 'terminal',
   previousViewBeforeSkills: 'terminal',
+  previousViewBeforeDashboard: 'terminal',
   setActiveView: (view) => set({ activeView: view }),
   taskPageData: {},
   taskResumeState: undefined,
@@ -656,6 +717,16 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   closeSkillsPage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeSkills
+    })),
+  openDashboardPage: () =>
+    set((state) => ({
+      activeView: 'dashboard',
+      previousViewBeforeDashboard:
+        state.activeView === 'dashboard' ? state.previousViewBeforeDashboard : state.activeView
+    })),
+  closeDashboardPage: () =>
+    set((state) => ({
+      activeView: state.previousViewBeforeDashboard
     })),
   setNewWorkspaceDraft: (draft) => set({ newWorkspaceDraft: draft }),
   clearNewWorkspaceDraft: () => set({ newWorkspaceDraft: null }),
