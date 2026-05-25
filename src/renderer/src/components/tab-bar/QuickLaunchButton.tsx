@@ -1,12 +1,19 @@
 import React, { useCallback } from 'react'
-import { Settings as SettingsIcon } from 'lucide-react'
+import { ChevronDown, Settings as SettingsIcon } from 'lucide-react'
+import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { toast } from 'sonner'
-import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent
+} from '@/components/ui/dropdown-menu'
 import { AGENT_CATALOG, AgentIcon } from '@/lib/agent-catalog'
 import { useAppStore } from '@/store'
 import { useDetectedAgents } from '@/hooks/useDetectedAgents'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 import { waitForAgentReady } from '@/lib/agent-ready-wait'
+import { loadRuleBody, useRulesList } from '@/hooks/useRulesList'
 import type { TuiAgent } from '../../../../shared/types'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 
@@ -96,21 +103,44 @@ function QuickLaunchAgentMenuItemsInner({
   const defaultAgent = useAppStore((s) => s.settings?.defaultTuiAgent)
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
+  const { rules: availableRules } = useRulesList()
 
   const openAgentSettings = useCallback(() => {
     openSettingsTarget({ pane: 'agents', repoId: null })
     openSettingsPage()
   }, [openSettingsPage, openSettingsTarget])
 
+  const openRulesSettings = useCallback(() => {
+    openSettingsTarget({ pane: 'rules', repoId: null })
+    openSettingsPage()
+  }, [openSettingsPage, openSettingsTarget])
+
   const runLaunch = useCallback(
-    (agent: TuiAgent) => {
+    async (agent: TuiAgent, ruleSlug: string | null) => {
       const entry = getCatalogEntry(agent)
       const label = entry?.label ?? agent
+      // Why: kickoff rules are prepended to whatever prompt the caller passed.
+      // No prompt = rule body becomes the first message; existing prompt = rule
+      // body acts as standing context above the task. Silent injection per
+      // design — the agent just sees the combined string.
+      let combinedPrompt = prompt
+      if (ruleSlug) {
+        try {
+          const rule = await loadRuleBody(ruleSlug)
+          const body = rule?.body.trim()
+          if (body) {
+            const trimmed = combinedPrompt?.trim() ?? ''
+            combinedPrompt = trimmed ? `${body}\n\n${trimmed}` : body
+          }
+        } catch (err) {
+          console.error('Failed to load kickoff rule body', err)
+        }
+      }
       const result = launchAgentInNewTab({
         agent,
         worktreeId,
         groupId,
-        ...(prompt !== undefined ? { prompt } : {}),
+        ...(combinedPrompt !== undefined ? { prompt: combinedPrompt } : {}),
         ...(promptDelivery !== undefined ? { promptDelivery } : {}),
         ...(launchSource !== undefined ? { launchSource } : {})
       })
@@ -173,16 +203,62 @@ function QuickLaunchAgentMenuItemsInner({
       {agents.map((agent) => {
         const entry = getCatalogEntry(agent)
         const label = entry?.label ?? agent
+        // Why: split-row layout — clicking the agent label launches with no
+        // rule (fast path, one click), while hovering the chevron opens a
+        // rules submenu (two clicks). Chevron is its own SubTrigger so the
+        // label's hover does not steal the submenu intent.
+        if (availableRules.length === 0) {
+          return (
+            <DropdownMenuItem
+              key={agent}
+              onSelect={() => void runLaunch(agent, null)}
+              className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
+              title={`Launch ${label} in a new terminal`}
+            >
+              <AgentIcon agent={agent} size={14} />
+              {label}
+            </DropdownMenuItem>
+          )
+        }
         return (
-          <DropdownMenuItem
-            key={agent}
-            onSelect={() => runLaunch(agent)}
-            className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
-            title={`Launch ${label} in a new terminal`}
-          >
-            <AgentIcon agent={agent} size={14} />
-            {label}
-          </DropdownMenuItem>
+          <div key={agent} className="flex items-center gap-0.5">
+            <DropdownMenuItem
+              onSelect={() => void runLaunch(agent, null)}
+              className="flex-1 gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 font-medium"
+              title={`Launch ${label} in a new terminal (no rule)`}
+            >
+              <AgentIcon agent={agent} size={14} />
+              {label}
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuPrimitive.SubTrigger
+                aria-label={`Launch ${label} with a kickoff rule`}
+                className="group flex h-7 cursor-default items-center justify-center rounded-[5px] px-1.5 outline-hidden focus:bg-black/8 dark:focus:bg-white/14 data-[state=open]:bg-black/8 dark:data-[state=open]:bg-white/14"
+              >
+                <ChevronDown className="size-3 text-muted-foreground transition-transform duration-150 ease-out group-data-[state=open]:-rotate-90" />
+              </DropdownMenuPrimitive.SubTrigger>
+              <DropdownMenuSubContent>
+                {availableRules.map((rule) => (
+                  <DropdownMenuItem
+                    key={rule.slug}
+                    onSelect={() => void runLaunch(agent, rule.slug)}
+                    className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5"
+                    title={rule.description ?? rule.name}
+                  >
+                    {rule.name}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={openRulesSettings}
+                  className="gap-2 rounded-[7px] px-2 py-1.5 text-[12px] leading-5 text-muted-foreground"
+                >
+                  <SettingsIcon className="size-3.5" />
+                  Manage rules…
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </div>
         )
       })}
       <DropdownMenuItem

@@ -26,6 +26,11 @@ type DecoratorArgs = {
   // diffs persisted to WorktreeMeta). GitHub PR review surfaces don't pass
   // this — their notes are remote and can't be edited via this slice.
   onUpdateComment?: (commentId: string, body: string) => Promise<boolean>
+  // Why: present only on surfaces where the user can promote an
+  // agent-authored comment to "accepted" (currently the plan editor). After
+  // acceptance the badge stays for provenance but downstream code treats the
+  // comment as user-authored.
+  onAcceptComment?: (commentId: string) => Promise<boolean>
   // Why: pending-scroll request from the SourceControl sidebar. When this id
   // matches a comment in this surface the decorator reveals that line in the
   // editor and calls the ack callback so the same id can be requested again
@@ -69,6 +74,7 @@ export function useDiffCommentDecorator({
   onAddCommentClick,
   onDeleteComment,
   onUpdateComment,
+  onAcceptComment,
   pendingScrollCommentId,
   onPendingScrollConsumed
 }: DecoratorArgs): void {
@@ -101,10 +107,12 @@ export function useDiffCommentDecorator({
   const onAddCommentClickRef = useRef(onAddCommentClick)
   const onDeleteCommentRef = useRef(onDeleteComment)
   const onUpdateCommentRef = useRef(onUpdateComment)
+  const onAcceptCommentRef = useRef(onAcceptComment)
   const onPendingScrollConsumedRef = useRef(onPendingScrollConsumed)
   onAddCommentClickRef.current = onAddCommentClick
   onDeleteCommentRef.current = onDeleteComment
   onUpdateCommentRef.current = onUpdateComment
+  onAcceptCommentRef.current = onAcceptComment
   onPendingScrollConsumedRef.current = onPendingScrollConsumed
 
   useEffect(() => {
@@ -414,6 +422,18 @@ export function useDiffCommentDecorator({
               : undefined
           }
           onContentResize={() => resizeZone(comment.id)}
+          {...(comment.authoredBy ? { authoredBy: comment.authoredBy } : {})}
+          {...(onAcceptCommentRef.current
+            ? {
+                onAccept: async () => {
+                  const fn = onAcceptCommentRef.current
+                  if (!fn) {
+                    return false
+                  }
+                  return fn(comment.id)
+                }
+              }
+            : {})}
         />
       )
     }

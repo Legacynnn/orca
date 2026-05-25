@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { TriggerActionButton } from '@/components/triggers/TriggerActionButton'
 import {
   ArrowDownUp,
   ArrowUp,
@@ -2570,7 +2571,7 @@ function SourceControlInner(): React.JSX.Element {
         </div>
 
         {scope === 'all' && (
-          <div className="border-b border-border px-3 py-2">
+          <div className="border-b border-border px-3 py-2 space-y-2">
             <CompareSummary
               summary={branchSummary}
               viewMode={sourceControlViewMode}
@@ -2579,6 +2580,15 @@ function SourceControlInner(): React.JSX.Element {
               viewModeToggleDisabled={!isSourceControlViewModeHydrated}
               onRetry={() => void refreshBranchCompare()}
             />
+            {(hasUncommittedEntries ||
+              (branchSummary?.status === 'ready' && (branchSummary.commitsAhead ?? 0) > 0)) &&
+            branchName &&
+            branchName !== 'HEAD' ? (
+              <BranchTriggersRow
+                branchName={branchName}
+                baseBranch={branchSummary?.baseRef ?? 'main'}
+              />
+            ) : null}
           </div>
         )}
 
@@ -3689,6 +3699,33 @@ export function CompareSummary({
           onClick={onRetry}
         />
       </div>
+    </div>
+  )
+}
+
+function BranchTriggersRow({
+  branchName,
+  baseBranch
+}: {
+  branchName: string
+  baseBranch: string
+}): React.JSX.Element {
+  const context = { branchName, baseBranch }
+  const summary = `Branch ${branchName} (base: ${baseBranch})`
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <TriggerActionButton
+        triggerId="diff-review"
+        context={context}
+        label="Review diff"
+        contextSummary={summary}
+      />
+      <TriggerActionButton
+        triggerId="branch-summarize"
+        context={context}
+        label="Summarize"
+        contextSummary={summary}
+      />
     </div>
   )
 }

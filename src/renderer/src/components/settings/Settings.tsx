@@ -16,6 +16,7 @@ import {
   Network,
   ShieldCheck,
   Palette,
+  ScrollText,
   Server,
   SlidersHorizontal,
   Smartphone,
@@ -23,7 +24,8 @@ import {
   Mic,
   SquareTerminal,
   TextCursorInput,
-  UserCog
+  UserCog,
+  Zap
 } from 'lucide-react'
 import type { GlobalSettings, SerperHooks } from '../../../../shared/types'
 import { getRepoKindLabel, isFolderRepo } from '../../../../shared/repo-kind'
@@ -61,6 +63,8 @@ import { StatsPane, STATS_PANE_SEARCH_ENTRIES } from '../stats/StatsPane'
 import { IntegrationsPane, INTEGRATIONS_PANE_SEARCH_ENTRIES } from './IntegrationsPane'
 import { TasksPane } from './TasksPane'
 import { TASKS_PANE_SEARCH_ENTRIES } from './tasks-search'
+import { RulesPane, RULES_PANE_SEARCH_ENTRIES } from './RulesPane'
+import { TriggersPane, TRIGGERS_PANE_SEARCH_ENTRIES } from './TriggersPane'
 import {
   DeveloperPermissionsPane,
   DEVELOPER_PERMISSIONS_PANE_SEARCH_ENTRIES
@@ -105,6 +109,8 @@ type SettingsNavTarget =
   | 'ssh'
   | 'experimental'
   | 'agents'
+  | 'rules'
+  | 'triggers'
   | 'orchestration'
   | 'servers'
   | 'mobile'
@@ -480,6 +486,22 @@ function Settings(): React.JSX.Element {
         description: 'Choose which task providers appear in the Tasks page and sidebar.',
         icon: ListChecks,
         searchEntries: TASKS_PANE_SEARCH_ENTRIES,
+        group: 'workflows'
+      },
+      {
+        id: 'rules',
+        title: 'Rules',
+        description: 'Reusable kickoff prompts you can attach to a new agent session.',
+        icon: ScrollText,
+        searchEntries: RULES_PANE_SEARCH_ENTRIES,
+        group: 'workflows'
+      },
+      {
+        id: 'triggers',
+        title: 'Triggers',
+        description: 'Built-in agent shortcuts on diffs, PRs, and plan files.',
+        icon: Zap,
+        searchEntries: TRIGGERS_PANE_SEARCH_ENTRIES,
         group: 'workflows'
       },
       {
@@ -1097,6 +1119,26 @@ function Settings(): React.JSX.Element {
                         customPromptDiscardSignal={commitPromptDiscardSignal}
                       />
                     </>
+                  ) : null}
+                </SettingsSection>
+
+                <SettingsSection
+                  id="rules"
+                  title="Rules"
+                  description="Reusable kickoff prompts you can attach to a new agent session."
+                  searchEntries={RULES_PANE_SEARCH_ENTRIES}
+                >
+                  {isSectionMounted('rules') ? <RulesPane /> : null}
+                </SettingsSection>
+
+                <SettingsSection
+                  id="triggers"
+                  title="Triggers"
+                  description="Built-in agent shortcuts on diffs, PRs, and plan files."
+                  searchEntries={TRIGGERS_PANE_SEARCH_ENTRIES}
+                >
+                  {isSectionMounted('triggers') ? (
+                    <TriggersPane settings={settings} updateSettings={updateSettings} />
                   ) : null}
                 </SettingsSection>
 

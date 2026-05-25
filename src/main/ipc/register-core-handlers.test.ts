@@ -44,6 +44,7 @@ const {
   registerOnboardingHandlersMock,
   registerSpeechHandlersMock,
   registerSkillsHandlersMock,
+  registerRulesHandlersMock,
   registerWorkspaceSpaceHandlersMock
 } = vi.hoisted(() => ({
   registerCliHandlersMock: vi.fn(),
@@ -87,6 +88,7 @@ const {
   registerOnboardingHandlersMock: vi.fn(),
   registerSpeechHandlersMock: vi.fn(),
   registerSkillsHandlersMock: vi.fn(),
+  registerRulesHandlersMock: vi.fn(),
   registerWorkspaceSpaceHandlersMock: vi.fn()
 }))
 
@@ -160,6 +162,10 @@ vi.mock('./settings', () => ({
 
 vi.mock('./skills', () => ({
   registerSkillsHandlers: registerSkillsHandlersMock
+}))
+
+vi.mock('./rules', () => ({
+  registerRulesHandlers: registerRulesHandlersMock
 }))
 
 vi.mock('./workspace-space', () => ({
@@ -296,6 +302,7 @@ describe('registerCoreHandlers', () => {
     registerExportHandlersMock.mockReset()
     registerSpeechHandlersMock.mockReset()
     registerSkillsHandlersMock.mockReset()
+    registerRulesHandlersMock.mockReset()
     registerWorkspaceSpaceHandlersMock.mockReset()
   })
 

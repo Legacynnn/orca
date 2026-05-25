@@ -371,6 +371,8 @@ export type UISlice = {
       | 'appearance'
       | 'input'
       | 'tasks'
+      | 'rules'
+      | 'triggers'
       | 'terminal'
       | 'notifications'
       | 'computer-use'

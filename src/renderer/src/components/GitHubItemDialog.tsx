@@ -47,6 +47,7 @@ import {
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
+import { TriggerInvokePopover } from '@/components/triggers/TriggerInvokePopover'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { VisuallyHidden } from 'radix-ui'
@@ -1913,10 +1914,55 @@ function ConversationTab({
     </Button>
   )
 
+  // Why: build a compact files-changed summary for the PR review trigger
+  // template. The agent fetches the full diff itself via `gh pr diff <N>` —
+  // sending the entire diff text here would blow past most agents' prompt
+  // budgets on large PRs.
+  const prFilesSummary =
+    item.type === 'pr' && files.length > 0
+      ? files
+          .map((file) => {
+            const counts = `+${file.additions}/-${file.deletions}`
+            const rename =
+              file.oldPath && file.oldPath !== file.path ? ` (was ${file.oldPath})` : ''
+            return `- ${file.status.padEnd(8)} ${counts.padEnd(12)} ${file.path}${rename}`
+          })
+          .join('\n')
+      : item.type === 'pr'
+        ? '(no files changed reported)'
+        : ''
+
+  const reviewWithAgentButton =
+    item.type === 'pr' ? (
+      <TriggerInvokePopover
+        triggerId="pr-review"
+        context={{
+          prTitle: item.title,
+          prBody: body,
+          prNumber: item.number,
+          prUrl: item.url,
+          prFilesSummary
+        }}
+        contextSummary={`PR #${item.number} — ${item.title}`}
+        side="left"
+        align="start"
+      >
+        <Button
+          variant="outline"
+          className="self-start justify-center gap-2 xl:self-stretch"
+          aria-label="Review PR with agent"
+        >
+          <Send className="size-4" />
+          Review with agent
+        </Button>
+      </TriggerInvokePopover>
+    ) : null
+
   const rightPanel =
     item.type === 'pr' ? (
       <div className="flex h-fit flex-col gap-3 xl:sticky xl:top-4">
         {startWorkspaceButton}
+        {reviewWithAgentButton}
         <PRActionsPanel
           item={item}
           repoPath={repoPath}

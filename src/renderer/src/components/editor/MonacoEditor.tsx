@@ -111,6 +111,7 @@ export default function MonacoEditor({
   const addDiffComment = useAppStore((s) => s.addDiffComment)
   const deleteDiffComment = useAppStore((s) => s.deleteDiffComment)
   const updateDiffComment = useAppStore((s) => s.updateDiffComment)
+  const acceptDiffComment = useAppStore((s) => s.acceptDiffComment)
   const scrollToDiffCommentId = useAppStore((s) => s.scrollToDiffCommentId)
   const setScrollToDiffCommentId = useAppStore((s) => s.setScrollToDiffCommentId)
   const allDiffComments = useAppStore((s): DiffComment[] | undefined =>
@@ -214,6 +215,7 @@ export default function MonacoEditor({
       }
     },
     onUpdateComment: worktreeId ? (id, body) => updateDiffComment(worktreeId, id, body) : undefined,
+    onAcceptComment: worktreeId ? (id) => acceptDiffComment(worktreeId, id) : undefined,
     pendingScrollCommentId: pendingScrollForThisEditor,
     onPendingScrollConsumed: () => setScrollToDiffCommentId(null)
   })

@@ -68,23 +68,61 @@
 
 .rich-markdown-annotation-selection {
   border-radius: 2px;
-  background: color-mix(in srgb, var(--annotation-highlight) 22%, transparent);
+  background: color-mix(in srgb, var(--annotation-highlight) 32%, transparent);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  transition: background 120ms ease;
 }
 
-.rich-markdown-editor-shell.has-rich-markdown-review-notes .rich-markdown-editor {
-  padding-right: min(360px, 34%);
+/* Why: the highlight is the click/hover target for opening a comment's
+   overlay, so it needs a pointer affordance and a stronger background while
+   hovered. Scoped to elements that actually carry data-comment-id so the
+   transient activeRange (no commentId) doesn't pick it up. */
+.rich-markdown-annotation-selection[data-comment-id] {
+  cursor: pointer;
+}
+
+.rich-markdown-annotation-selection[data-comment-id]:hover {
+  background: color-mix(in srgb, var(--annotation-highlight) 50%, transparent);
+}
+
+/* Why: applied when the user is composing a new note OR hovering an existing
+   note card in the rail — should read distinctly above the calm persistent
+   .rich-markdown-annotation-selection tint without being garish. */
+.rich-markdown-annotation-active {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--annotation-highlight) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--annotation-highlight) 70%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background 120ms ease;
 }
 
 .rich-markdown-review-rail-actions {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  z-index: 45;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Why: collapse the front-matter / header banner once the user has scrolled
+   past the top. Animate max-height and opacity so the transition reads as a
+   deliberate dismissal rather than a jump. */
+.rich-markdown-header-slot {
+  flex-shrink: 0;
+  max-height: 320px;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    max-height 180ms ease,
+    opacity 140ms ease,
+    border-color 140ms ease;
+}
+
+.rich-markdown-header-slot.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-color: transparent;
 }
 
 .rich-markdown-review-rail-toggle,
@@ -119,21 +157,90 @@
   color: var(--foreground);
 }
 
-.rich-markdown-review-note-layer {
-  position: absolute;
-  top: 0;
-  right: 16px;
-  bottom: 0;
-  width: min(300px, 30%);
-  pointer-events: none;
-  z-index: 30;
+/* Why: single-comment overlay anchored to the source line. Positioned
+   absolutely against the editor shell, so its top is computed from the
+   line's coordsAtPos. Solid --popover background keeps the card readable
+   over the translucent vesper-blur editor surface. */
+.rich-markdown-comment-overlay {
+  /* Why: portaled to document.body and given viewport coords inline so it
+     escapes any ancestor stacking context. Without this, Radix-portaled
+     dropdowns at z-[70] could render above the overlay's close chip even
+     when the overlay had a higher z-index — because the overlay lived
+     inside a trapped subtree. */
+  position: fixed;
+  max-width: 480px;
+  z-index: 80;
 }
 
-.rich-markdown-review-note-card {
+.rich-markdown-comment-overlay .serper-diff-comment-card {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-left-width: 1px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+/* Why: small dismiss chip pinned to the overlay's top-right corner, slightly
+   overhanging the card so it reads as a popover-close (Radix/Headless UI
+   convention) rather than a peer of the action row. */
+.rich-markdown-comment-overlay-close {
   position: absolute;
-  right: 0;
-  width: 100%;
-  pointer-events: auto;
+  top: -8px;
+  right: -8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 999px;
+  background: var(--popover);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--foreground) 14%, transparent);
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.rich-markdown-comment-overlay-close:hover {
+  color: var(--foreground);
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+}
+
+/* Why: thin separator between the user-action icons (Copy / Send) and the
+   built-in Edit / Delete that come from DiffCommentCard. Gives a quick visual
+   grouping cue: "do something with the note" on the left, "modify the note"
+   on the right. */
+.rich-markdown-comment-action-divider {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.dark .rich-markdown-comment-overlay .serper-diff-comment-card {
+  background: var(--popover);
+}
+
+.rich-markdown-comment-overlay .serper-diff-comment-meta {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.rich-markdown-comment-overlay .serper-diff-comment-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--popover-foreground);
 }
 
 .rich-markdown-review-note-send {

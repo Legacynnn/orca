@@ -73,6 +73,10 @@ Orchestration:
   orchestration gate-list   List decision gates
   orchestration reset       Reset orchestration state
 
+Plans:
+  plan-comment leave        Leave an anchored comment on a plan markdown file
+  plan-comment list         List plan comments for the current (or specified) worktree
+
 Computer Use:
   computer permissions      Open the macOS permission setup for computer-use
   computer list-apps        List running apps available to computer-use
@@ -182,6 +186,8 @@ Common Commands:
   serper repo show --repo <selector> [--json]
   serper repo set-base-ref --repo <selector> --ref <ref> [--json]
   serper repo search-refs --repo <selector> --query <text> [--limit <n>] [--json]
+  serper plan-comment leave --file <path> --line-start <N> --line-end <M> --body "..." [--harness <id>] [--model <id>] [--worktree <selector>] [--json]
+  serper plan-comment list [--file <path>] [--worktree <selector>] [--json]
 
 Selectors:
   --repo <selector>         Registered repo selector such as id:<id>, name:<name>, or path:<path>

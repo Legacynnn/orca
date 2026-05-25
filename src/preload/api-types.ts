@@ -173,6 +173,7 @@ import type {
 } from '../shared/commit-message-agent-spec'
 import type { ShellOpenLocalPathResult } from '../shared/shell-open-types'
 import type { SkillDiscoveryResult } from '../shared/skills'
+import type { Rule, RuleSummary } from '../shared/rule-metadata'
 import type {
   CrashReportRecord,
   CrashReportSubmitArgs,
@@ -1233,6 +1234,20 @@ export type PreloadApi = {
   }
   skills: {
     discover: () => Promise<SkillDiscoveryResult>
+  }
+  rules: {
+    list: () => Promise<RuleSummary[]>
+    read: (slug: string) => Promise<Rule | null>
+    create: (input: {
+      name: string
+      description?: string | null
+      body: string
+    }) => Promise<{ rule: Rule; rules: RuleSummary[] }>
+    update: (args: {
+      slug: string
+      input: { name: string; description?: string | null; body: string }
+    }) => Promise<{ rule: Rule; rules: RuleSummary[] }>
+    delete: (slug: string) => Promise<RuleSummary[]>
   }
   pet: {
     import: () => Promise<CustomPet | null>

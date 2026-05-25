@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- Why: this component co-locates the rich markdown editor surface, toolbar, search, and slash menu so tightly coupled editor state stays in one place. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
 import type { JSONContent } from '@tiptap/core'
@@ -9,6 +10,10 @@ import { RichMarkdownDocLinkMenu } from './RichMarkdownDocLinkMenu'
 import { RichMarkdownEmojiMenu } from './RichMarkdownEmojiMenu'
 import { useAppStore } from '@/store'
 import { RichMarkdownToolbar } from './RichMarkdownToolbar'
+import { TriggerInvokePopover } from '@/components/triggers/TriggerInvokePopover'
+import { formatPlanCommentsForTrigger } from '@/lib/triggers/format-plan-comments'
+import { Button } from '@/components/ui/button'
+import { ClipboardCheck, MessageSquarePlus } from 'lucide-react'
 import { encodeRawMarkdownHtmlForRichEditor } from './raw-markdown-html'
 import { useLocalImagePick } from './useLocalImagePick'
 import { createRichMarkdownExtensions } from './rich-markdown-extensions'
@@ -56,12 +61,14 @@ import { getRelativePathInsideRoot, normalizeRelativePath } from '@/lib/path'
 import { DiffCommentPopover } from '../diff-comments/DiffCommentPopover'
 import { DiffCommentCard } from '../diff-comments/DiffCommentCard'
 import { isMarkdownComment } from '@/lib/diff-comment-compat'
-import { MessageSquare, Plus, Send } from 'lucide-react'
+import { Copy, MessageSquare, Plus, Send, X } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { getDiffCommentLineLabel } from '@/lib/diff-comment-compat'
 import {
   formatMarkdownReviewNotes,
   sortMarkdownReviewNotes,
@@ -216,11 +223,6 @@ type RichMarkdownAnnotationTarget = RichMarkdownComposerState & {
   buttonLeft: number
 }
 
-type RichMarkdownNotePosition = {
-  comment: DiffComment
-  top: number
-}
-
 function countMarkdownLines(value: string): number {
   if (value.length === 0) {
     return 1
@@ -289,12 +291,6 @@ function clampRichMarkdownAnnotationTarget(
     return null
   }
   return { ...target, from: clampedFrom, to: clampedTo }
-}
-
-function clearRichMarkdownNotePositions(
-  setNotePositions: React.Dispatch<React.SetStateAction<RichMarkdownNotePosition[]>>
-): void {
-  setNotePositions((current) => (current.length === 0 ? current : []))
 }
 
 type RichMarkdownTextChar = {
@@ -389,25 +385,59 @@ function getRichMarkdownAnnotationHighlightRanges(
 ): RichMarkdownAnnotationHighlightRange[] {
   const blocks = buildRichMarkdownCommentBlocks(editor)
   return comments.flatMap((comment) => {
-    const selectedText = comment.selectedText?.trim()
-    if (!selectedText) {
+    const inlineRanges = computeInlineRangesForComment(
+      editor,
+      blocks,
+      comment,
+      markdownSourceLineOffset
+    )
+    if (inlineRanges.length > 0) {
+      return inlineRanges.map((range) => ({ ...range, commentId: comment.id }))
+    }
+    // Why: fall back to the full block(s) covered by the comment's line range
+    // so persistent highlights still show for older notes / agent-authored
+    // notes that lack selectedText. Without this, those comments would have
+    // no visible anchor in the editor.
+    const endLine = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
+    const startLine = comment.startLine
+      ? Math.max(1, comment.startLine - markdownSourceLineOffset)
+      : endLine
+    const matching = blocks.filter(
+      (block) => Math.max(block.startLine, startLine) <= Math.min(block.endLine, endLine)
+    )
+    if (matching.length === 0) {
       return []
     }
-    const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
-    const block = blocks.find(
-      (candidate) => candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
-    )
-    if (block) {
-      const blockRanges = findRichMarkdownTextRanges(
-        collectRichMarkdownTextChars(editor, block.from, block.to),
-        selectedText
-      )
-      if (blockRanges.length > 0) {
-        return blockRanges
-      }
-    }
-    return findRichMarkdownTextRanges(collectRichMarkdownTextChars(editor), selectedText)
+    const from = Math.min(...matching.map((block) => block.from))
+    const to = Math.max(...matching.map((block) => block.to))
+    return from === to ? [] : [{ from, to, commentId: comment.id }]
   })
+}
+
+function computeInlineRangesForComment(
+  editor: Editor,
+  blocks: RichMarkdownCommentBlock[],
+  comment: DiffComment,
+  markdownSourceLineOffset: number
+): RichMarkdownAnnotationHighlightRange[] {
+  const selectedText = comment.selectedText?.trim()
+  if (!selectedText) {
+    return []
+  }
+  const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
+  const block = blocks.find(
+    (candidate) => candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
+  )
+  if (block) {
+    const blockRanges = findRichMarkdownTextRanges(
+      collectRichMarkdownTextChars(editor, block.from, block.to),
+      selectedText
+    )
+    if (blockRanges.length > 0) {
+      return blockRanges
+    }
+  }
+  return findRichMarkdownTextRanges(collectRichMarkdownTextChars(editor), selectedText)
 }
 
 function getRichMarkdownSelectionRange(editor: Editor): RichMarkdownComposerState {
@@ -559,12 +589,26 @@ export default function RichMarkdownEditor({
   const [annotationPopover, setAnnotationPopover] = useState<RichMarkdownAnnotationTarget | null>(
     null
   )
-  const [reviewRailOpen, setReviewRailOpen] = useState(false)
-  const [notePositions, setNotePositions] = useState<RichMarkdownNotePosition[]>([])
+  // Why: id of the comment whose overlay is currently open. Single value
+  // (not a list) because the new model shows one comment at a time anchored
+  // to its source line — no side rail, no stacking.
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null)
+  const [openCommentRect, setOpenCommentRect] = useState<{
+    top: number
+    left: number
+    right: number
+  } | null>(null)
+  // Why: collapse the headerSlot (front-matter banner) when the user scrolls
+  // past the very top, so it doesn't permanently take vertical space.
+  const [scrolledPastTop, setScrolledPastTop] = useState(false)
+  // Why: tooltip-style grace period when the cursor moves off a highlighted
+  // range but might be heading into the overlay (which has actionable
+  // buttons). Cleared on mouseenter of the overlay, scheduled on mouseleave
+  // of either the highlight or the overlay.
+  const overlayCloseTimeoutRef = useRef<number | null>(null)
   const annotationPopoverRef = useRef<RichMarkdownAnnotationTarget | null>(null)
   const canAnnotateRichMarkdownRef = useRef(false)
   const annotationTargetFrameRef = useRef<number | null>(null)
-  const notePositionsFrameRef = useRef<number | null>(null)
   const isEditingLinkRef = useRef(false)
   const typedEmptyOrderedListMarkerRef = useRef(false)
   const sourceRelativePath = useMemo(
@@ -591,7 +635,40 @@ export default function RichMarkdownEditor({
     [markdownReviewContent, markdownReviewNotes]
   )
   const hasMarkdownComments = markdownComments.length > 0
-  const reviewRailVisible = hasMarkdownComments && reviewRailOpen
+  // Why: plan-review and apply-plan-comments triggers need a workspace-relative
+  // path so the agent's `serper plan-comment leave --file <path>` matches the
+  // path stored on existing comments. Skip the trigger slot for files outside
+  // the worktree (sourceRelativePath === null) since the CLI can't anchor to
+  // them.
+  const planTriggerSlot = useMemo(() => {
+    if (!sourceRelativePath) {
+      return null
+    }
+    const planContext = { planContent: content, planPath: sourceRelativePath }
+    const applyContext = {
+      planContent: content,
+      planPath: sourceRelativePath,
+      comments: formatPlanCommentsForTrigger(markdownComments)
+    }
+    return (
+      <>
+        <TriggerInvokePopover triggerId="plan-review" context={planContext}>
+          <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px]">
+            <MessageSquarePlus className="size-3" />
+            Plan review
+          </Button>
+        </TriggerInvokePopover>
+        {hasMarkdownComments ? (
+          <TriggerInvokePopover triggerId="apply-plan-comments" context={applyContext}>
+            <Button type="button" variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[11px]">
+              <ClipboardCheck className="size-3" />
+              Apply comments
+            </Button>
+          </TriggerInvokePopover>
+        ) : null}
+      </>
+    )
+  }, [content, hasMarkdownComments, markdownComments, sourceRelativePath])
   const tableOfContentsItems = useMemo(() => buildMarkdownTableOfContents(content), [content])
   const flatTableOfContentsItems = useMemo(
     () => flattenMarkdownTocItems(tableOfContentsItems),
@@ -649,69 +726,44 @@ export default function RichMarkdownEditor({
     })
   }, [])
 
-  const syncNotePositions = useCallback((): void => {
+  // Why: viewport-relative rect for the on-line overlay popover. We portal
+  // the overlay to document.body so it can sit above Radix-portaled dropdown
+  // menus (z-[70]) without being trapped by an ancestor stacking context.
+  // Recomputed on scroll / content edit / resize so it tracks the line.
+  const syncOpenCommentTop = useCallback((): void => {
     const ed = editorRef.current
     const root = rootRef.current
-    if (
-      !reviewRailVisible ||
-      !canAnnotateRichMarkdown ||
-      !ed ||
-      !root ||
-      markdownComments.length === 0
-    ) {
-      clearRichMarkdownNotePositions(setNotePositions)
+    if (!ed || !root || !openCommentId) {
+      setOpenCommentRect(null)
       return
     }
-    const rootRect = root.getBoundingClientRect()
+    const target = markdownComments.find((comment) => comment.id === openCommentId)
+    if (!target) {
+      setOpenCommentRect(null)
+      return
+    }
     const blocks = buildRichMarkdownCommentBlocks(ed)
-    const nextPositions = markdownComments
-      .map((comment): RichMarkdownNotePosition | null => {
-        const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
-        const block = blocks.find(
-          (candidate) =>
-            candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
-        )
-        if (!block) {
-          return null
-        }
-        try {
-          const coords = ed.view.coordsAtPos(Math.min(block.to, ed.state.doc.content.size))
-          return {
-            comment,
-            top: Math.max(8, coords.bottom - rootRect.top + 6)
-          }
-        } catch {
-          return null
-        }
-      })
-      .filter((position): position is RichMarkdownNotePosition => position !== null)
-      .sort(
-        (left, right) => left.top - right.top || left.comment.createdAt - right.comment.createdAt
-      )
-    let nextOpenTop = 0
-    setNotePositions(
-      nextPositions.map((position) => {
-        const top = Math.max(position.top, nextOpenTop)
-        const estimatedHeight = 72 + position.comment.body.split('\n').length * 18
-        nextOpenTop = top + estimatedHeight + 8
-        return { ...position, top }
-      })
+    const bodyLineNumber = Math.max(1, target.lineNumber - markdownSourceLineOffset)
+    const block = blocks.find(
+      (candidate) => candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
     )
-  }, [canAnnotateRichMarkdown, markdownComments, markdownSourceLineOffset, reviewRailVisible])
-
-  const requestSyncNotePositions = useCallback((): void => {
-    if (!reviewRailVisible) {
-      clearRichMarkdownNotePositions(setNotePositions)
+    if (!block) {
+      setOpenCommentRect(null)
       return
     }
-    if (notePositionsFrameRef.current !== null) {
-      return
+    try {
+      const coords = ed.view.coordsAtPos(Math.min(block.to, ed.state.doc.content.size))
+      const rootRect = root.getBoundingClientRect()
+      const innerLeft = Math.max(24, Math.min(56, rootRect.width / 2 - 240))
+      setOpenCommentRect({
+        top: Math.max(8, coords.bottom + 6),
+        left: rootRect.left + innerLeft,
+        right: Math.max(0, window.innerWidth - rootRect.right + 24)
+      })
+    } catch {
+      setOpenCommentRect(null)
     }
-    notePositionsFrameRef.current = window.requestAnimationFrame(() => {
-      notePositionsFrameRef.current = null
-      syncNotePositions()
-    })
-  }, [reviewRailVisible, syncNotePositions])
+  }, [markdownComments, markdownSourceLineOffset, openCommentId])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -952,6 +1004,96 @@ export default function RichMarkdownEditor({
     ed.view.dispatch(ed.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, null))
   }, [])
 
+  // Why: light up the text range a comment is anchored to when the user
+  // hovers it in the dropdown. Uses the activeRange channel (mutually
+  // exclusive with the compose-new-note popover). Falls back to the full
+  // block range when selectedText is missing or no longer matches the doc
+  // — older comments and agent-authored ones often have no selectedText.
+  const highlightCommentRange = useCallback(
+    (comment: DiffComment): void => {
+      const ed = editorRef.current
+      if (!ed) {
+        return
+      }
+      const inlineRanges = getRichMarkdownAnnotationHighlightRanges(
+        ed,
+        [comment],
+        markdownSourceLineOffset
+      )
+      let activeRange: { from: number; to: number } | null = inlineRanges[0] ?? null
+      if (!activeRange) {
+        const blocks = buildRichMarkdownCommentBlocks(ed)
+        const endLine = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
+        const startLine = comment.startLine
+          ? Math.max(1, comment.startLine - markdownSourceLineOffset)
+          : endLine
+        const matching = blocks.filter(
+          (block) => Math.max(block.startLine, startLine) <= Math.min(block.endLine, endLine)
+        )
+        if (matching.length > 0) {
+          const from = Math.min(...matching.map((block) => block.from))
+          const to = Math.max(...matching.map((block) => block.to))
+          if (from !== to) {
+            activeRange = { from, to }
+          }
+        }
+      }
+      if (!activeRange) {
+        return
+      }
+      ed.view.dispatch(
+        ed.state.tr.setMeta(richMarkdownAnnotationHighlightPluginKey, { activeRange })
+      )
+    },
+    [markdownSourceLineOffset]
+  )
+
+  const cancelOverlayClose = useCallback((): void => {
+    if (overlayCloseTimeoutRef.current !== null) {
+      window.clearTimeout(overlayCloseTimeoutRef.current)
+      overlayCloseTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleOverlayClose = useCallback((): void => {
+    cancelOverlayClose()
+    // Why: generous grace window — the mouse has to traverse a gap from the
+    // highlighted text into the overlay (or from the overlay into a portaled
+    // dropdown like Send's agent picker). A short delay closes the popover
+    // mid-traversal and looks janky; 400ms gives the cursor time to land.
+    overlayCloseTimeoutRef.current = window.setTimeout(() => {
+      overlayCloseTimeoutRef.current = null
+      setOpenCommentId(null)
+    }, 400)
+  }, [cancelOverlayClose])
+
+  const openCommentOverlay = useCallback(
+    (comment: DiffComment, options?: { scroll?: boolean }): void => {
+      cancelOverlayClose()
+      const shouldScroll = options?.scroll ?? true
+      const ed = editorRef.current
+      if (ed && shouldScroll) {
+        const blocks = buildRichMarkdownCommentBlocks(ed)
+        const bodyLineNumber = Math.max(1, comment.lineNumber - markdownSourceLineOffset)
+        const block = blocks.find(
+          (candidate) =>
+            candidate.startLine <= bodyLineNumber && bodyLineNumber <= candidate.endLine
+        )
+        if (block) {
+          try {
+            const pos = Math.min(block.from, ed.state.doc.content.size)
+            ed.commands.setTextSelection(pos)
+            ed.commands.scrollIntoView()
+          } catch {
+            // best-effort scroll
+          }
+        }
+      }
+      setOpenCommentId(comment.id)
+    },
+    [cancelOverlayClose, markdownSourceLineOffset]
+  )
+
   const clearAllAnnotationHighlights = useCallback((): void => {
     const ed = editorRef.current
     if (!ed) {
@@ -1010,35 +1152,150 @@ export default function RichMarkdownEditor({
   }, [editor, syncAnnotationTarget])
 
   useEffect(() => {
-    requestSyncNotePositions()
-  }, [content, editor, markdownComments, requestSyncNotePositions])
-
-  useEffect(() => {
-    if (!reviewRailVisible) {
-      clearRichMarkdownNotePositions(setNotePositions)
+    if (!openCommentId) {
+      setOpenCommentRect(null)
       return
     }
+    syncOpenCommentTop()
     const container = scrollContainerRef.current
     if (!container) {
       return
     }
-    const update = (): void => requestSyncNotePositions()
+    const update = (): void => syncOpenCommentTop()
     container.addEventListener('scroll', update, { passive: true })
     window.addEventListener('resize', update)
-    requestSyncNotePositions()
     return () => {
       container.removeEventListener('scroll', update)
       window.removeEventListener('resize', update)
     }
-  }, [requestSyncNotePositions, reviewRailVisible])
+  }, [content, openCommentId, syncOpenCommentTop])
+
+  // Why: close the overlay when its underlying comment is deleted from
+  // another surface (sidebar, agent action, etc.).
+  useEffect(() => {
+    if (openCommentId && !markdownComments.some((comment) => comment.id === openCommentId)) {
+      setOpenCommentId(null)
+    }
+  }, [markdownComments, openCommentId])
+
+  // Why: drive .is-collapsed on the header slot wrapper so the front-matter
+  // banner fades + collapses once the user starts reading the document.
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) {
+      return
+    }
+    const onScroll = (): void => {
+      setScrolledPastTop(container.scrollTop > 8)
+    }
+    onScroll()
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Why: hover any highlighted commented text -> open that comment's overlay.
+  // The 220ms close timer (scheduleOverlayClose) bridges the gap between the
+  // mouse leaving the highlighted span and entering the overlay card, so the
+  // popover doesn't disappear before the user can click its buttons.
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) {
+      return
+    }
+    const findCommentId = (target: EventTarget | null): string | null => {
+      if (!(target instanceof Element)) {
+        return null
+      }
+      const el = target.closest('[data-comment-id]') as HTMLElement | null
+      return el?.dataset.commentId ?? null
+    }
+    const onOver = (event: MouseEvent): void => {
+      const id = findCommentId(event.target)
+      if (!id) {
+        return
+      }
+      const comment = markdownComments.find((entry) => entry.id === id)
+      if (!comment) {
+        return
+      }
+      cancelOverlayClose()
+      if (openCommentId !== id) {
+        openCommentOverlay(comment, { scroll: false })
+      }
+    }
+    const onOut = (event: MouseEvent): void => {
+      const fromId = findCommentId(event.target)
+      const toId = findCommentId(event.relatedTarget)
+      if (!fromId || fromId === toId) {
+        return
+      }
+      scheduleOverlayClose()
+    }
+    container.addEventListener('mouseover', onOver)
+    container.addEventListener('mouseout', onOut)
+    return () => {
+      container.removeEventListener('mouseover', onOver)
+      container.removeEventListener('mouseout', onOut)
+    }
+  }, [
+    cancelOverlayClose,
+    markdownComments,
+    openCommentId,
+    openCommentOverlay,
+    scheduleOverlayClose
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (overlayCloseTimeoutRef.current !== null) {
+        window.clearTimeout(overlayCloseTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  // Why: close the overlay on Esc (matches popover conventions) and on
+  // mousedown outside the overlay card.
+  useEffect(() => {
+    if (!openCommentId) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setOpenCommentId(null)
+      }
+    }
+    const onMouseDown = (event: MouseEvent): void => {
+      const target = event.target as Element | null
+      if (!target) {
+        return
+      }
+      // Overlay is portaled to document.body, so look it up there rather
+      // than under rootRef.
+      const overlay = document.querySelector('.rich-markdown-comment-overlay')
+      if (overlay && overlay.contains(target)) {
+        return
+      }
+      // Don't dismiss when clicking on the highlight that owns this overlay —
+      // ProseMirror still places the caret, but the popover should remain
+      // visible since the cursor is over its anchor.
+      const anchor = target.closest('[data-comment-id]') as HTMLElement | null
+      if (anchor?.dataset.commentId === openCommentId) {
+        return
+      }
+      setOpenCommentId(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('mousedown', onMouseDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [openCommentId])
 
   useEffect(() => {
     return () => {
       if (annotationTargetFrameRef.current !== null) {
         window.cancelAnimationFrame(annotationTargetFrameRef.current)
-      }
-      if (notePositionsFrameRef.current !== null) {
-        window.cancelAnimationFrame(notePositionsFrameRef.current)
       }
     }
   }, [])
@@ -1427,17 +1684,103 @@ export default function RichMarkdownEditor({
     <div className="rich-markdown-editor-layout">
       <div
         ref={rootRef}
-        className={`rich-markdown-editor-shell ${
-          reviewRailVisible ? 'has-rich-markdown-review-notes' : ''
-        }`.trim()}
+        className="rich-markdown-editor-shell"
         style={{ '--editor-font-zoom-level': editorFontZoomLevel } as React.CSSProperties}
       >
         <RichMarkdownToolbar
           editor={editor}
           onToggleLink={toggleLinkFromToolbar}
           onImagePick={handleLocalImagePick}
+          trailingSlot={
+            planTriggerSlot || hasMarkdownComments ? (
+              <>
+                {planTriggerSlot}
+                {hasMarkdownComments ? (
+                  <div
+                    className="rich-markdown-review-rail-actions"
+                    onMouseLeave={clearAnnotationHighlight}
+                  >
+                    <DropdownMenu
+                      onOpenChange={(open) => {
+                        if (!open) {
+                          clearAnnotationHighlight()
+                        }
+                      }}
+                    >
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="rich-markdown-review-rail-toggle"
+                          aria-label="Show review notes"
+                          title="Show review notes"
+                        >
+                          <MessageSquare className="size-3.5" />
+                          <span>{markdownComments.length}</span>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[260px] max-w-[360px] p-1">
+                        {markdownReviewNotes.map((comment) => {
+                          const excerpt = comment.body.replace(/\s+/g, ' ').trim().slice(0, 80)
+                          const label = getDiffCommentLineLabel({
+                            lineNumber: comment.lineNumber,
+                            startLine: comment.startLine
+                          })
+                          return (
+                            <DropdownMenuItem
+                              key={comment.id}
+                              onMouseEnter={() => highlightCommentRange(comment)}
+                              onFocus={() => highlightCommentRange(comment)}
+                              onSelect={() => openCommentOverlay(comment)}
+                              className="flex flex-col items-start gap-0.5"
+                            >
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {label}
+                              </span>
+                              <span className="text-xs leading-snug text-foreground">
+                                {excerpt}
+                                {comment.body.length > 80 ? '…' : ''}
+                              </span>
+                            </DropdownMenuItem>
+                          )
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="rich-markdown-review-rail-send"
+                          title="Send notes to a new agent"
+                          aria-label="Send notes to a new agent"
+                        >
+                          <Send className="size-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[180px]">
+                        <QuickLaunchAgentMenuItems
+                          worktreeId={worktreeId}
+                          groupId={worktreeId}
+                          onFocusTerminal={focusTerminalTabSurface}
+                          prompt={markdownReviewPrompt}
+                          promptDelivery="draft"
+                          launchSource="notes_send"
+                        />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ) : null}
+              </>
+            ) : null
+          }
         />
-        {headerSlot}
+        {headerSlot ? (
+          <div
+            className={`rich-markdown-header-slot ${scrolledPastTop ? 'is-collapsed' : ''}`.trim()}
+            aria-hidden={scrolledPastTop ? 'true' : undefined}
+          >
+            {headerSlot}
+          </div>
+        ) : null}
         {/* Why: wrap scroll area + search bar in a relative container so the
           search bar overlays the content (Monaco-style) instead of occupying
           layout space and shifting the document down when opened. */}
@@ -1549,93 +1892,113 @@ export default function RichMarkdownEditor({
             onSubmit={submitAnnotation}
           />
         ) : null}
-        {hasMarkdownComments ? (
-          <div className="rich-markdown-review-rail-actions">
-            <button
-              type="button"
-              className="rich-markdown-review-rail-toggle"
-              aria-label={reviewRailOpen ? 'Hide review notes' : 'Show review notes'}
-              aria-expanded={reviewRailOpen}
-              title={reviewRailOpen ? 'Hide review notes' : 'Show review notes'}
-              onClick={() => setReviewRailOpen((open) => !open)}
-            >
-              <MessageSquare className="size-3.5" />
-              <span>{markdownComments.length}</span>
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="rich-markdown-review-rail-send"
-                  title="Send notes to a new agent"
-                  aria-label="Send notes to a new agent"
+        {openCommentId && openCommentRect
+          ? (() => {
+              const openComment = markdownComments.find((comment) => comment.id === openCommentId)
+              if (!openComment) {
+                return null
+              }
+              return createPortal(
+                <div
+                  className="rich-markdown-comment-overlay"
+                  style={{
+                    top: openCommentRect.top,
+                    left: openCommentRect.left,
+                    right: openCommentRect.right
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onMouseEnter={cancelOverlayClose}
+                  onMouseLeave={(event) => {
+                    // Why: when the cursor moves from the overlay into a
+                    // portaled Radix dropdown (e.g., Send → agent picker),
+                    // the mouseleave fires even though the user is still
+                    // interacting with this overlay's controls. Detect that
+                    // case and keep the overlay alive.
+                    const next = event.relatedTarget as Element | null
+                    if (next?.closest?.('[data-slot="dropdown-menu-content"]')) {
+                      return
+                    }
+                    scheduleOverlayClose()
+                  }}
                 >
-                  <Send className="size-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[180px]">
-                <QuickLaunchAgentMenuItems
-                  worktreeId={worktreeId}
-                  groupId={worktreeId}
-                  onFocusTerminal={focusTerminalTabSurface}
-                  prompt={markdownReviewPrompt}
-                  promptDelivery="draft"
-                  launchSource="notes_send"
-                />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ) : null}
-        {reviewRailVisible && notePositions.length > 0 ? (
-          <div className="rich-markdown-review-note-layer" aria-label="Review notes">
-            {notePositions.map(({ comment, top }) => (
-              <div
-                key={comment.id}
-                className="rich-markdown-review-note-card"
-                style={{ top }}
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <DiffCommentCard
-                  lineNumber={comment.lineNumber}
-                  startLine={comment.startLine}
-                  body={comment.body}
-                  onDelete={() => void deleteDiffComment(worktreeId, comment.id)}
-                  onSubmitEdit={(body) => updateDiffComment(worktreeId, comment.id, body)}
-                  onContentResize={syncNotePositions}
-                  headerActions={
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="rich-markdown-comment-overlay-close"
+                    title="Close note (Esc)"
+                    aria-label="Close note"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setOpenCommentId(null)
+                    }}
+                  >
+                    <X className="size-3" />
+                  </button>
+                  <DiffCommentCard
+                    lineNumber={openComment.lineNumber}
+                    startLine={openComment.startLine}
+                    body={openComment.body}
+                    onDelete={() => {
+                      void deleteDiffComment(worktreeId, openComment.id)
+                      setOpenCommentId(null)
+                    }}
+                    onSubmitEdit={(body) => updateDiffComment(worktreeId, openComment.id, body)}
+                    headerActions={
+                      <>
                         <button
                           type="button"
-                          className="rich-markdown-review-note-send"
-                          title="Send note to a new agent"
-                          aria-label="Send note to a new agent"
+                          className="serper-diff-comment-edit"
+                          title="Copy note text"
+                          aria-label="Copy note text"
                           onMouseDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            void navigator.clipboard
+                              .writeText(openComment.body)
+                              .then(() => toast.success('Note copied'))
+                              .catch(() => toast.error('Failed to copy note'))
+                          }}
                         >
-                          <Send className="size-3.5" />
+                          <Copy className="size-3.5" />
                         </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[180px]">
-                        <QuickLaunchAgentMenuItems
-                          worktreeId={worktreeId}
-                          groupId={worktreeId}
-                          onFocusTerminal={focusTerminalTabSurface}
-                          prompt={formatMarkdownReviewNotes(
-                            [comment as MarkdownReviewNote],
-                            markdownReviewContent
-                          )}
-                          promptDelivery="draft"
-                          launchSource="notes_send"
-                        />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        ) : null}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="serper-diff-comment-edit"
+                              title="Send note to a new agent"
+                              aria-label="Send note to a new agent"
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Send className="size-3.5" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[180px]">
+                            <QuickLaunchAgentMenuItems
+                              worktreeId={worktreeId}
+                              groupId={worktreeId}
+                              onFocusTerminal={focusTerminalTabSurface}
+                              prompt={formatMarkdownReviewNotes(
+                                [openComment as MarkdownReviewNote],
+                                markdownReviewContent
+                              )}
+                              promptDelivery="draft"
+                              launchSource="notes_send"
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <span className="rich-markdown-comment-action-divider" aria-hidden="true" />
+                      </>
+                    }
+                  />
+                </div>,
+                document.body
+              )
+            })()
+          : null}
       </div>
       {showTableOfContents ? (
         <MarkdownTableOfContentsPanel

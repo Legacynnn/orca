@@ -291,6 +291,21 @@ export type WorktreeLineageWarning = {
 // existing persistence layer writes them to serper-data.json automatically.
 export type DiffCommentSource = 'diff' | 'markdown'
 
+export type DiffCommentAuthor =
+  | { kind: 'user' }
+  | {
+      kind: 'agent'
+      /** Agent identifier (e.g. `claude`, `codex`). Matches `TuiAgent`. */
+      harness: string
+      /** Model id reported by the harness (e.g. `claude-opus-4-7`). May be null
+       *  if the harness did not surface a model. */
+      model: string | null
+      /** When the user accepts an agent-authored comment, downstream code can
+       *  treat it like a user comment. Recorded so the UI can show acceptance
+       *  state without losing provenance. */
+      acceptedAt?: number
+    }
+
 export type DiffComment = {
   id: string
   worktreeId: string
@@ -306,6 +321,9 @@ export type DiffComment = {
   createdAt: number
   // Reserved for future "comments on the original side" — always 'modified' in v1.
   side: 'modified'
+  /** Provenance of the comment. Missing on entries written before this field
+   *  was added — treat absence as `{ kind: 'user' }`. */
+  authoredBy?: DiffCommentAuthor
 }
 
 // ─── Tab Group Layout ───────────────────────────────────────────────
@@ -1669,6 +1687,10 @@ export type GlobalSettings = {
    *  effectively present at runtime — the renderer should still fall back to
    *  defaults when reading optional sub-fields. */
   voice?: VoiceSettings
+  /** User-edited prompt overrides for the bundled trigger buttons (diff
+   *  review, plan review, etc.). Keyed by `TriggerId`. Missing entries fall
+   *  back to the bundled default in `src/shared/triggers/default-prompts.ts`. */
+  triggerOverrides?: Partial<Record<string, { promptOverride: string | null }>>
 }
 
 export type CommitMessageAiModelCapability = {

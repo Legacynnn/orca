@@ -1,7 +1,8 @@
-import { CornerDownLeft, Pencil, Trash } from 'lucide-react'
+import { Check, CornerDownLeft, Pencil, Trash } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { getDiffCommentLineLabel } from '@/lib/diff-comment-compat'
+import type { DiffCommentAuthor } from '../../../../shared/types'
 
 // Why: the saved-note card lives inside a Monaco view zone's DOM node.
 // useDiffCommentDecorator creates a React root per zone and renders this
@@ -26,6 +27,10 @@ type Props = {
   onContentResize?: () => void
   onSubmitEdit?: (body: string) => Promise<boolean>
   headerActions?: ReactNode
+  authoredBy?: DiffCommentAuthor
+  /** Invoked when the user accepts an agent-authored comment. After
+   *  acceptance the comment is treated like a user comment downstream. */
+  onAccept?: () => Promise<boolean> | boolean
 }
 
 export function DiffCommentCard({
@@ -36,8 +41,12 @@ export function DiffCommentCard({
   onDelete,
   onContentResize,
   onSubmitEdit,
-  headerActions
+  headerActions,
+  authoredBy,
+  onAccept
 }: Props): React.JSX.Element {
+  const [accepting, setAccepting] = useState(false)
+  const isAgentAuthored = authoredBy?.kind === 'agent' && typeof authoredBy.acceptedAt !== 'number'
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(body)
   const [submitting, setSubmitting] = useState(false)
@@ -127,13 +136,55 @@ export function DiffCommentCard({
     }
   }
 
+  const authorBadge =
+    authoredBy?.kind === 'agent'
+      ? `${authoredBy.harness}${authoredBy.model ? ` · ${authoredBy.model}` : ''}`
+      : null
+
+  const handleAccept = async (): Promise<void> => {
+    if (!onAccept) {
+      return
+    }
+    setAccepting(true)
+    try {
+      await onAccept()
+    } finally {
+      setAccepting(false)
+    }
+  }
+
   return (
     <div className="serper-diff-comment-card">
       <div className="serper-diff-comment-header">
         <span className="serper-diff-comment-meta">
           Note · {label ?? getDiffCommentLineLabel({ lineNumber, startLine }).toLowerCase()}
+          {authorBadge ? (
+            <span
+              className="ml-1 rounded-sm bg-amber-500/15 px-1 py-px text-[10px] font-medium text-amber-700 dark:text-amber-300"
+              title={authorBadge}
+            >
+              {authorBadge}
+            </span>
+          ) : null}
         </span>
         <div className="serper-diff-comment-actions">
+          {!editing && isAgentAuthored && onAccept ? (
+            <button
+              type="button"
+              className="serper-diff-comment-edit"
+              title="Accept agent comment"
+              aria-label="Accept agent comment"
+              onMouseDown={(ev) => ev.stopPropagation()}
+              disabled={accepting}
+              onClick={(ev) => {
+                ev.preventDefault()
+                ev.stopPropagation()
+                void handleAccept()
+              }}
+            >
+              <Check className="size-3.5" />
+            </button>
+          ) : null}
           {!editing && headerActions}
           {onSubmitEdit && !editing && (
             <button

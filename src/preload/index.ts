@@ -37,6 +37,7 @@ import type {
 import type { GitHistoryOptions, GitHistoryResult } from '../shared/git-history'
 import type { ShellOpenLocalPathResult } from '../shared/shell-open-types'
 import type { SkillDiscoveryResult } from '../shared/skills'
+import type { Rule, RuleSummary } from '../shared/rule-metadata'
 import type {
   RuntimeBrowserDriverState,
   RuntimeMobileSessionTabMove,
@@ -1382,6 +1383,21 @@ const api = {
 
   skills: {
     discover: (): Promise<SkillDiscoveryResult> => ipcRenderer.invoke('skills:discover')
+  },
+
+  rules: {
+    list: (): Promise<RuleSummary[]> => ipcRenderer.invoke('rules:list'),
+    read: (slug: string): Promise<Rule | null> => ipcRenderer.invoke('rules:read', slug),
+    create: (input: {
+      name: string
+      description?: string | null
+      body: string
+    }): Promise<{ rule: Rule; rules: RuleSummary[] }> => ipcRenderer.invoke('rules:create', input),
+    update: (args: {
+      slug: string
+      input: { name: string; description?: string | null; body: string }
+    }): Promise<{ rule: Rule; rules: RuleSummary[] }> => ipcRenderer.invoke('rules:update', args),
+    delete: (slug: string): Promise<RuleSummary[]> => ipcRenderer.invoke('rules:delete', slug)
   },
 
   pet: {

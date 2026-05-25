@@ -9,6 +9,12 @@ export type DiffCommentsSlice = {
   getDiffComments: (worktreeId: string | null | undefined) => DiffComment[]
   addDiffComment: (input: Omit<DiffComment, 'id' | 'createdAt'>) => Promise<DiffComment | null>
   updateDiffComment: (worktreeId: string, commentId: string, body: string) => Promise<boolean>
+  /** Mark an agent-authored comment as accepted by the human. After
+   *  acceptance the comment behaves like a user comment downstream while
+   *  retaining provenance via `authoredBy.harness`/`model`. No-op for
+   *  user-authored or already-accepted comments. Returns true on success
+   *  (including no-op), false on persistence failure. */
+  acceptDiffComment: (worktreeId: string, commentId: string) => Promise<boolean>
   deleteDiffComment: (worktreeId: string, commentId: string) => Promise<void>
   clearDiffComments: (worktreeId: string) => Promise<boolean>
   clearDiffCommentsForFile: (worktreeId: string, filePath: string) => Promise<boolean>
@@ -302,6 +308,40 @@ export const createDiffCommentsSlice: StateCreator<AppState, [], [], DiffComment
       return true
     } catch (err) {
       console.error('Failed to persist diff comments:', err)
+      rollback(set, worktreeId, result.previous, result.next)
+      return false
+    }
+  },
+
+  acceptDiffComment: async (worktreeId, commentId) => {
+    const result = mutateComments(set, worktreeId, (current) => {
+      const idx = current.findIndex((c) => c.id === commentId)
+      if (idx === -1) {
+        return null
+      }
+      const existing = current[idx]
+      const author = existing.authoredBy
+      // Why: only agent-authored comments can be "accepted". User comments
+      // are already authoritative; already-accepted agent comments are a
+      // no-op.
+      if (!author || author.kind !== 'agent' || typeof author.acceptedAt === 'number') {
+        return null
+      }
+      const next = current.slice()
+      next[idx] = {
+        ...existing,
+        authoredBy: { ...author, acceptedAt: Date.now() }
+      }
+      return next
+    })
+    if (!result) {
+      return true
+    }
+    try {
+      await enqueuePersist(worktreeId, get)
+      return true
+    } catch (err) {
+      console.error('Failed to persist diff comment acceptance:', err)
       rollback(set, worktreeId, result.previous, result.next)
       return false
     }

@@ -18,6 +18,9 @@ type RichMarkdownToolbarProps = {
   editor: Editor | null
   onToggleLink: () => void
   onImagePick: () => void
+  /** Optional trailing slot used for surface-specific actions (e.g. trigger
+   *  buttons on plan markdown files). Rendered right-aligned. */
+  trailingSlot?: React.ReactNode
 }
 
 function Separator(): React.JSX.Element {
@@ -27,7 +30,8 @@ function Separator(): React.JSX.Element {
 export function RichMarkdownToolbar({
   editor,
   onToggleLink,
-  onImagePick
+  onImagePick,
+  trailingSlot
 }: RichMarkdownToolbarProps): React.JSX.Element {
   return (
     <div className="rich-markdown-editor-toolbar">
@@ -117,6 +121,12 @@ export function RichMarkdownToolbar({
       <RichMarkdownToolbarButton active={false} label="Image" onClick={onImagePick}>
         <ImageIcon className="size-3.5" />
       </RichMarkdownToolbarButton>
+      {trailingSlot ? (
+        <>
+          <div className="ml-auto" />
+          {trailingSlot}
+        </>
+      ) : null}
     </div>
   )
 }

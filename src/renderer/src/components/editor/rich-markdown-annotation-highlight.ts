@@ -12,6 +12,10 @@ type RichMarkdownAnnotationHighlightState = {
 export type RichMarkdownAnnotationHighlightRange = {
   from: number
   to: number
+  /** When present, decorations get a data-comment-id attribute so hover/click
+   *  handlers in the editor can route back to the originating comment. Only
+   *  the persistent noteRanges carry this — activeRange is anonymous. */
+  commentId?: string
 }
 
 type RichMarkdownAnnotationHighlightMeta = {
@@ -27,17 +31,30 @@ function createAnnotationDecorations(
   activeRange: RichMarkdownAnnotationHighlightRange | null,
   noteRanges: RichMarkdownAnnotationHighlightRange[]
 ): DecorationSet {
-  const decorations = [...noteRanges, ...(activeRange ? [activeRange] : [])]
-    .map((range) => {
-      const from = Math.min(range.from, range.to)
-      const to = Math.max(range.from, range.to)
-      return from === to
-        ? null
-        : Decoration.inline(from, to, {
-            class: 'rich-markdown-annotation-selection'
-          })
-    })
-    .filter((decoration): decoration is Decoration => decoration !== null)
+  // Why: noteRanges get the calm persistent highlight; activeRange is used
+  // both for the "currently composing" popover selection and for hover from
+  // a note card in the rail, and gets a stronger class so it pops above the
+  // baseline note tint.
+  const decorations: Decoration[] = []
+  for (const range of noteRanges) {
+    const from = Math.min(range.from, range.to)
+    const to = Math.max(range.from, range.to)
+    if (from === to) {
+      continue
+    }
+    const attrs: Record<string, string> = { class: 'rich-markdown-annotation-selection' }
+    if (range.commentId) {
+      attrs['data-comment-id'] = range.commentId
+    }
+    decorations.push(Decoration.inline(from, to, attrs))
+  }
+  if (activeRange) {
+    const from = Math.min(activeRange.from, activeRange.to)
+    const to = Math.max(activeRange.from, activeRange.to)
+    if (from !== to) {
+      decorations.push(Decoration.inline(from, to, { class: 'rich-markdown-annotation-active' }))
+    }
+  }
   return decorations.length === 0 ? DecorationSet.empty : DecorationSet.create(doc, decorations)
 }
 

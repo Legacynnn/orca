@@ -21,6 +21,7 @@ import { ENTRY_REFRESH_GRACE_MS, shouldEntryRefresh } from './checks-entry-refre
 import type { PRInfo, PRCheckDetail, PRComment } from '../../../../shared/types'
 import { getConnectionId } from '@/lib/connection-context'
 import { CreatePullRequestDialog } from './CreatePullRequestDialog'
+import { TriggerActionButton } from '@/components/triggers/TriggerActionButton'
 import type { HostedReviewCreationEligibility } from '../../../../shared/hosted-review'
 import { refreshHostedReviewCard } from '@/store/slices/hosted-review'
 import { toast } from 'sonner'
@@ -878,35 +879,50 @@ export default function ChecksPanel(): React.JSX.Element {
                 : 'Create a pull request to start checks and review.'}
           </div>
           {!operationInProgress && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(canCreate || canPushCreate) && (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(canCreate || canPushCreate) && (
+                  <Button
+                    size="xs"
+                    onClick={() => {
+                      setCreatePrPushFirst(canPushCreate)
+                      setCreatePrDialogOpen(true)
+                    }}
+                  >
+                    {canPushCreate ? 'Push & Create PR' : 'Create PR'}
+                  </Button>
+                )}
                 <Button
                   size="xs"
+                  variant="outline"
+                  disabled={emptyRefreshing}
                   onClick={() => {
-                    setCreatePrPushFirst(canPushCreate)
-                    setCreatePrDialogOpen(true)
+                    if (!activeWorktreeId) {
+                      return
+                    }
+                    setEmptyRefreshing(true)
+                    void handleRefresh().finally(() => {
+                      setEmptyRefreshing(false)
+                    })
                   }}
                 >
-                  {canPushCreate ? 'Push & Create PR' : 'Create PR'}
+                  {emptyRefreshing ? 'Refreshing…' : 'Refresh'}
                 </Button>
-              )}
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={emptyRefreshing}
-                onClick={() => {
-                  if (!activeWorktreeId) {
-                    return
-                  }
-                  setEmptyRefreshing(true)
-                  void handleRefresh().finally(() => {
-                    setEmptyRefreshing(false)
-                  })
-                }}
-              >
-                {emptyRefreshing ? 'Refreshing…' : 'Refresh'}
-              </Button>
-            </div>
+              </div>
+              {branch ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <TriggerActionButton
+                    triggerId="pr-creation"
+                    context={{
+                      branchName: branch,
+                      baseBranch: repo?.worktreeBaseRef ?? 'main'
+                    }}
+                    label="Draft PR with agent"
+                    contextSummary={`Branch ${branch} (base: ${repo?.worktreeBaseRef ?? 'main'})`}
+                  />
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </>
@@ -1013,6 +1029,21 @@ export default function ChecksPanel(): React.JSX.Element {
         {activeWorktree && repo && (
           <PRActions pr={pr} repo={repo} worktree={activeWorktree} onRefreshPR={handleRefreshPR} />
         )}
+
+        <div className="flex flex-wrap gap-1.5">
+          <TriggerActionButton
+            triggerId="pr-review"
+            context={{
+              prTitle: pr.title,
+              prNumber: pr.number,
+              prUrl: pr.url,
+              prBody: `(Fetch with \`gh pr view ${pr.number}\`)`,
+              prFilesSummary: `(Fetch with \`gh pr diff ${pr.number} --name-only\`)`
+            }}
+            label="Review with agent"
+            contextSummary={`PR #${pr.number} — ${pr.title}`}
+          />
+        </div>
       </div>
 
       <ConflictingFilesSection pr={pr} />
