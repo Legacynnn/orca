@@ -165,7 +165,6 @@ export function RepositoryPane({
 }: RepositoryPaneProps): React.JSX.Element {
   const isFolder = isFolderRepo(repo)
   const searchQuery = useAppStore((state) => state.settingsSearchQuery)
-  const symlinksEnabled = useAppStore((state) => state.settings?.experimentalWorktreeSymlinks)
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
   const [copiedTemplate, setCopiedTemplate] = useState(false)
 
@@ -320,10 +319,7 @@ export function RepositoryPane({
         ) : null}
       </section>
     ) : null,
-    !isFolder &&
-    !repo.connectionId &&
-    symlinksEnabled &&
-    matchesSettingsSearch(searchQuery, symlinkEntries) ? (
+    !isFolder && !repo.connectionId && matchesSettingsSearch(searchQuery, symlinkEntries) ? (
       <WorktreeSymlinksSection key="symlinks" repo={repo} updateRepo={updateRepo} />
     ) : null,
     !isFolder && matchesSettingsSearch(searchQuery, sparsePresetEntries) ? (

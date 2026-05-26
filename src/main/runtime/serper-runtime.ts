@@ -253,6 +253,7 @@ import {
 import { DEFAULT_REPO_BADGE_COLOR, getDefaultVoiceSettings } from '../../shared/constants'
 import { listRepoWorktrees } from '../repo-worktrees'
 import { createWorktreeSymlinks } from '../ipc/worktree-symlinks'
+import { checkIgnoredPaths } from '../git/check-ignored-paths'
 import {
   createRemoteWorktree,
   configureCreatedWorktreePushTarget,
@@ -342,7 +343,6 @@ type RuntimeStore = {
     refreshLocalBaseRefOnWorktreeCreate: boolean
     branchPrefix: string
     branchPrefixCustom: string
-    experimentalWorktreeSymlinks?: boolean
     mobileAutoRestoreFitMs?: number | null
     voice?: VoiceSettings
   }
@@ -4590,6 +4590,9 @@ export class SerperRuntimeService {
     this.store.addRepo(repo)
     this.invalidateResolvedWorktreeCache()
     this.notifier?.reposChanged()
+    if (kind === 'git') {
+      void this.autoDetectEnvSymlinks(repo)
+    }
     return this.store.getRepo(repo.id) ?? repo
   }
 
@@ -4766,6 +4769,7 @@ export class SerperRuntimeService {
     invalidateAuthorizedRootsCache()
     this.invalidateResolvedWorktreeCache()
     this.notifier?.reposChanged()
+    void this.autoDetectEnvSymlinks(repo)
     return this.store.getRepo(repo.id) ?? repo
   }
 
@@ -5922,11 +5926,7 @@ export class SerperRuntimeService {
       }
     }
 
-    if (
-      settings.experimentalWorktreeSymlinks &&
-      repo.symlinkPaths &&
-      repo.symlinkPaths.length > 0
-    ) {
+    if (repo.symlinkPaths && repo.symlinkPaths.length > 0) {
       await createWorktreeSymlinks(repo.path, created.path, repo.symlinkPaths)
     }
 
@@ -8064,6 +8064,36 @@ export class SerperRuntimeService {
   private invalidateResolvedWorktreeCache(): void {
     this.resolvedWorktreeGeneration += 1
     this.resolvedWorktreeCache = null
+  }
+
+  private async autoDetectEnvSymlinks(repo: Repo): Promise<void> {
+    if (repo.connectionId || isFolderRepo(repo)) {
+      return
+    }
+    if (repo.symlinkPaths && repo.symlinkPaths.length > 0) {
+      return
+    }
+    try {
+      const entries = await readdir(repo.path)
+      const envFiles = entries.filter(
+        (name) => name === '.env' || (name.startsWith('.env.') && !name.endsWith('.example'))
+      )
+      if (envFiles.length === 0) {
+        return
+      }
+      const ignored = await checkIgnoredPaths(repo.path, envFiles)
+      if (ignored.length === 0) {
+        return
+      }
+      const fresh = this.store?.getRepo(repo.id)
+      if (!fresh || (fresh.symlinkPaths && fresh.symlinkPaths.length > 0)) {
+        return
+      }
+      this.store?.updateRepo(repo.id, { symlinkPaths: ignored })
+      this.notifier?.reposChanged()
+    } catch {
+      // Best-effort
+    }
   }
 
   private recordPtyWorktree(

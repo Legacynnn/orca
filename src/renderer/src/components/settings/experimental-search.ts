@@ -30,23 +30,6 @@ export const EXPERIMENTAL_PANE_SEARCH_ENTRIES: SettingsSearchEntry[] = [
       'bell',
       'sidebar'
     ]
-  },
-  {
-    title: 'Symlinks on worktrees',
-    description:
-      'Automatically symlink configured files or folders into newly created worktrees so shared state (envs, caches, installs) stays connected.',
-    keywords: [
-      'experimental',
-      'worktree',
-      'worktrees',
-      'symlink',
-      'symlinks',
-      'link',
-      'links',
-      'shared',
-      'env',
-      'node_modules'
-    ]
   }
 ]
 
@@ -63,6 +46,5 @@ function findEntry(title: string): SettingsSearchEntry {
 
 export const EXPERIMENTAL_SEARCH_ENTRY = {
   pet: findEntry('Pet'),
-  activity: findEntry('Agents View'),
-  symlinks: findEntry('Symlinks on worktrees')
+  activity: findEntry('Agents View')
 } as const

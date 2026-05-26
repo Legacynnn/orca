@@ -42,6 +42,7 @@ import {
 import { getSshGitProvider } from '../providers/ssh-git-dispatch'
 import { getActiveMultiplexer } from './ssh'
 import { normalizeSparseDirectories } from './sparse-checkout-directories'
+import { checkIgnoredPaths } from '../git/check-ignored-paths'
 import { track } from '../telemetry/client'
 import { getCohortAtEmit } from '../telemetry/cohort-classifier'
 import type { RepoMethod } from '../../shared/telemetry-events'
@@ -134,6 +135,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
       scheduleIconAutoDetect(mainWindow, store, repo)
+      scheduleEnvAutoDetect(mainWindow, store, repo)
       emitRepoAdded('folder_picker', false)
       return { repo }
     }
@@ -433,6 +435,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
       scheduleIconAutoDetect(mainWindow, store, repo)
+      scheduleEnvAutoDetect(mainWindow, store, repo)
       emitRepoAdded('folder_picker', false)
       return { repo }
     }
@@ -742,6 +745,7 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       invalidateAuthorizedRootsCache()
       notifyReposChanged(mainWindow)
       scheduleIconAutoDetect(mainWindow, store, repo)
+      scheduleEnvAutoDetect(mainWindow, store, repo)
       emitRepoAdded('clone_url', false)
       return repo
     }
@@ -961,13 +965,13 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
     }
   )
 
-  // Why: legacy repos persisted before this feature have iconSource undefined.
-  // Kick off a one-time scan for each so users don't need to open settings to
-  // see auto-detected logos. The guard inside scheduleIconAutoDetect makes
-  // this a no-op for repos that have already been scanned, so this runs once
-  // per legacy repo and is bounded by repo count.
+  // Why: legacy repos persisted before these features have iconSource/symlinkPaths
+  // undefined. Kick off a one-time scan for each so users don't need to open
+  // settings. The guards inside each function make this a no-op for repos that
+  // have already been scanned, so this runs once per legacy repo.
   for (const repo of store.getRepos()) {
     scheduleIconAutoDetect(mainWindow, store, repo)
+    scheduleEnvAutoDetect(mainWindow, store, repo)
   }
 
   ipcMain.handle(
@@ -1087,6 +1091,43 @@ function scheduleIconAutoDetect(mainWindow: BrowserWindow, store: Store, repo: R
       }
     } catch {
       // Detection is best-effort. Silently fall back to the folder glyph.
+    }
+  })()
+}
+
+// Why: `.env` files are almost always git-ignored and needed in worktrees.
+// Auto-detecting them on repo add saves users from having to manually
+// configure symlink paths for every project.
+function scheduleEnvAutoDetect(mainWindow: BrowserWindow, store: Store, repo: Repo): void {
+  if (repo.connectionId || isFolderRepo(repo)) {
+    return
+  }
+  if (repo.symlinkPaths && repo.symlinkPaths.length > 0) {
+    return
+  }
+  void (async () => {
+    try {
+      const entries = await readdir(repo.path)
+      const envFiles = entries.filter(
+        (name) => name === '.env' || (name.startsWith('.env.') && !name.endsWith('.example'))
+      )
+      if (envFiles.length === 0) {
+        return
+      }
+      const ignored = await checkIgnoredPaths(repo.path, envFiles)
+      if (ignored.length === 0) {
+        return
+      }
+      const fresh = store.getRepo(repo.id)
+      if (!fresh || (fresh.symlinkPaths && fresh.symlinkPaths.length > 0)) {
+        return
+      }
+      const updated = store.updateRepo(repo.id, { symlinkPaths: ignored })
+      if (updated) {
+        notifyReposChanged(mainWindow)
+      }
+    } catch {
+      // Best-effort — don't block repo add on env detection failure.
     }
   })()
 }

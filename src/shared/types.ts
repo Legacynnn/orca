@@ -85,9 +85,8 @@ export type Repo = {
    *  existing persisted records stay forward-compatible. */
   issueSourcePreference?: IssueSourcePreference
   /** Paths (relative to the primary checkout) that should be symlinked into
-   *  newly created worktrees of this repo. Consumed only when the global
-   *  `experimentalWorktreeSymlinks` flag is on — the per-repo list is the
-   *  "what to link", the global flag is the "whether to link at all" switch.
+   *  newly created worktrees of this repo. Auto-populated with git-ignored
+   *  `.env` files on repo add; users can add/remove entries in repo settings.
    *  Undefined/empty means no symlinks are created for this repo. */
   symlinkPaths?: string[]
   /** Per-repo workspace icon source. `undefined` is treated identically to
@@ -1632,11 +1631,8 @@ export type GlobalSettings = {
   /** One-shot migration guard for defaulting the Agents view off for all
    *  users. Once set, later explicit opt-ins persist normally. */
   experimentalActivityDefaultedOffForAllUsers?: boolean
-  /** Experimental: when creating a worktree, automatically symlink a
-   *  user-configured set of files/folders from the primary checkout (e.g.
-   *  `.env`, `node_modules`) into the new worktree. Opt-in while the
-   *  configuration surface and edge cases (conflicts with existing paths,
-   *  cleanup on worktree delete) are still being worked out. */
+  /** @deprecated Kept for schema compatibility. Worktree symlinks are now
+   *  always enabled; the per-repo `symlinkPaths` list controls what to link. */
   experimentalWorktreeSymlinks: boolean
   /** Active non-local runtime environment for client-routed RPC. `null`
    *  preserves the current local desktop behavior. */
